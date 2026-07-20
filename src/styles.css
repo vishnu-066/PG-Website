@@ -1302,7 +1302,7 @@ footer {
 }
 
 .public-sidebar-drawer {
-  display: none;
+  display: none !important;
 }
 
 @media (max-width: 1028px) {
@@ -1455,7 +1455,7 @@ footer {
 
   /* Standalone Public Sidebar Drawer (Sliding from Right side) */
   .public-sidebar-drawer {
-    display: flex;
+    display: flex !important;
     position: fixed;
     top: 0;
     right: 0 !important;

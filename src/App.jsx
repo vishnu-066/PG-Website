@@ -188,7 +188,7 @@ function App() {
       )}
 
       {/* Standalone Mobile Sidebar Drawer (EXACT match with Admin Portal mobile drawer) */}
-      <div className={`admin-sidebar public-sidebar-drawer ${menuOpen ? 'open' : ''}`}>
+      <div className={`public-sidebar-drawer ${menuOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <div className="sidebar-brand-info">
             <img src={logo} alt="Sri Venkateswara Gents PG Logo" />
@@ -622,7 +622,6 @@ function App() {
               <li><button onClick={() => scrollTo('rooms')} style={{ background: 'none', border: 'none', font: 'inherit', cursor: 'pointer', color: 'inherit' }}>Rooms</button></li>
               <li><button onClick={() => scrollTo('amenities')} style={{ background: 'none', border: 'none', font: 'inherit', cursor: 'pointer', color: 'inherit' }}>Amenities</button></li>
               <li><button onClick={() => scrollTo('hotspots')} style={{ background: 'none', border: 'none', font: 'inherit', cursor: 'pointer', color: 'inherit' }}>Location</button></li>
-              <li><button onClick={() => window.location.hash = '#/admin'} style={{ background: 'none', border: 'none', font: 'inherit', cursor: 'pointer', color: 'var(--primary)', fontWeight: '600' }}>Owner Portal</button></li>
             </ul>
           </div>
           <div className="footer-contact">
