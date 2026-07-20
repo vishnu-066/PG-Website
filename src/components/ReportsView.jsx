@@ -69,17 +69,21 @@ export default function ReportsView() {
         });
 
       case 'collection':
-        return transactions.map(tx => ({
-          'Tenant Name': tx.tenantName,
-          'Room': tx.roomNumber,
-          'Bed': tx.bedNumber,
-          'Rent Amount': tx.amount,
-          'Due Date': tx.dueDate,
-          'Status': tx.status,
-          'Payment Date': tx.paymentDate || '-',
-          'Payment Mode': tx.paymentMode || '-',
-          'Transaction ID': tx.transactionId || '-'
-        }));
+        return transactions.map(tx => {
+          const tenant = tenants.find(t => t.id === tx.tenantId);
+          return {
+            'Customer ID': tenant ? (tenant.customerId || tenant.id) : tx.tenantId,
+            'Tenant Name': tx.tenantName,
+            'Room': tx.roomNumber,
+            'Bed': tx.bedNumber,
+            'Rent Amount': tx.amount,
+            'Due Date': tx.dueDate,
+            'Status': tx.status,
+            'Payment Date': tx.paymentDate || '-',
+            'Payment Mode': tx.paymentMode || '-',
+            'Transaction ID': tx.transactionId || '-'
+          };
+        });
 
       case 'vacant':
         const vacantBeds = [];
@@ -106,6 +110,7 @@ export default function ReportsView() {
         currentMonthPendingTx.forEach(tx => {
           const tenant = tenants.find(t => t.id === tx.tenantId);
           pendingList.push({
+            'Customer ID': tenant ? (tenant.customerId || tenant.id) : tx.tenantId,
             'Tenant Name': tx.tenantName,
             'Phone Number': tenant ? tenant.phone : '-',
             'Room Number': tx.roomNumber,

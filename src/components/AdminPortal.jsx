@@ -220,11 +220,23 @@ export default function AdminPortal({ onBackToHome }) {
       {/* Sidebar Container (No-Print) */}
       <div className={`admin-sidebar no-print ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <img src={logo} alt="Sri Venkateswara Logo" />
-          <div>
-            <h3>Sri Venkateswara</h3>
-            <span>Gents PG Management</span>
+          <div className="sidebar-brand-info">
+            <img src={logo} alt="Sri Venkateswara Logo" />
+            <div>
+              <h3>Sri Venkateswara</h3>
+              <span>Gents PG Management</span>
+            </div>
           </div>
+          <button 
+            className="mobile-sidebar-close-btn" 
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close sidebar"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2.5" fill="none">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
 
         <nav className="sidebar-nav">

@@ -72,6 +72,7 @@ function App() {
   const [form, setForm] = useState({ name: '', phone: '', moveIn: '' });
   const [activeFaq, setActiveFaq] = useState(null);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [activeSection, setActiveSection] = useState('home');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -89,11 +90,33 @@ function App() {
     return () => window.removeEventListener('scroll', updateScrollState);
   }, []);
 
+  // Handle escape key and body scroll lock for mobile menu drawer
+  useEffect(() => {
+    if (menuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
+
   const toggleTheme = () => {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
 
   const scrollTo = (id) => {
+    setActiveSection(id);
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
     setMenuOpen(false);
   };
@@ -125,11 +148,7 @@ function App() {
         </button>
 
         <div className="topbar-right">
-          <nav className={menuOpen ? 'open' : ''}>
-            <div className="sidebar-logo">
-              <img src={logo} alt="Sri Venkateswara Gents PG Logo" />
-              <span>SV Gents PG</span>
-            </div>
+          <nav className="desktop-nav">
             <button onClick={() => scrollTo('home')}>Home</button>
             <button onClick={() => scrollTo('rooms')}>Rooms</button>
             <button onClick={() => scrollTo('amenities')}>Amenities</button>
@@ -162,9 +181,107 @@ function App() {
           </button>
         </div>
       </header>
-      <div className={`nav-backdrop ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(false)} />
 
-      <div className={`page-content-wrapper ${menuOpen ? 'blurred' : ''}`}>
+      {/* Standalone Mobile Sidebar Backdrop */}
+      {menuOpen && (
+        <div className="nav-backdrop open" onClick={() => setMenuOpen(false)} />
+      )}
+
+      {/* Standalone Mobile Sidebar Drawer (EXACT match with Admin Portal mobile drawer) */}
+      <div className={`admin-sidebar public-sidebar-drawer ${menuOpen ? 'open' : ''}`}>
+        <div className="sidebar-brand">
+          <div className="sidebar-brand-info">
+            <img src={logo} alt="Sri Venkateswara Gents PG Logo" />
+            <div>
+              <h3>Sri Venkateswara</h3>
+              <span>Gents PG</span>
+            </div>
+          </div>
+          <button 
+            className="mobile-sidebar-close-btn" 
+            onClick={() => setMenuOpen(false)}
+            aria-label="Close navigation menu"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2.5" fill="none">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <nav className="sidebar-nav">
+          <button className={`sidebar-nav-item ${activeSection === 'home' ? 'active' : ''}`} onClick={() => scrollTo('home')}>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+            <span>Home</span>
+          </button>
+          
+          <button className={`sidebar-nav-item ${activeSection === 'rooms' ? 'active' : ''}`} onClick={() => scrollTo('rooms')}>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+              <path d="M2 22V14M22 22V12M2 14h20M2 18h20M6 10h12M6 6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4H6V6z" />
+            </svg>
+            <span>Rooms & Rates</span>
+          </button>
+
+          <button className={`sidebar-nav-item ${activeSection === 'amenities' ? 'active' : ''}`} onClick={() => scrollTo('amenities')}>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            <span>Amenities</span>
+          </button>
+
+          <button className={`sidebar-nav-item ${activeSection === 'hotspots' ? 'active' : ''}`} onClick={() => scrollTo('hotspots')}>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <span>Location</span>
+          </button>
+
+          <button className={`sidebar-nav-item ${activeSection === 'faq' ? 'active' : ''}`} onClick={() => scrollTo('faq')}>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>FAQ</span>
+          </button>
+
+          <button className="sidebar-nav-item admin-portal-item" onClick={() => { window.location.hash = '#/admin'; setMenuOpen(false); }}>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <span>Admin Portal</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="admin-user-profile-badge">
+            <div className="profile-initials">
+              SV
+            </div>
+            <div className="profile-details">
+              <h4>Sri Venkateswara</h4>
+              <span>Gents PG Management</span>
+            </div>
+          </div>
+
+          <div className="sidebar-action-buttons">
+            <button onClick={() => scrollTo('contact')} className="sidebar-action-btn back-home" style={{ width: '100%', justifyContent: 'center', background: 'var(--primary)', color: '#fff', border: 'none' }}>
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+              <span>Book a Visit</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="page-content-wrapper">
         {/* Hero Section */}
         <section className="hero" id="home">
         <div className="hero-copy">

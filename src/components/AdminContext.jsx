@@ -21,21 +21,30 @@ const generateDefaultRooms = () => {
   return generated;
 };
 
+const getRoomTypeAndPrice = (bedCount) => {
+  if (bedCount === 1) {
+    return { type: 'Single Sharing', price: 15000 };
+  } else if (bedCount === 2) {
+    return { type: 'Double Sharing', price: 8000 };
+  } else if (bedCount === 3) {
+    return { type: 'Triple Sharing', price: 6000 };
+  } else if (bedCount >= 4) {
+    return { type: 'Four Sharing', price: 5000 };
+  }
+  return { type: 'Unknown', price: 0 };
+};
+
 const createRoomTemplate = (roomNum) => {
   const lastDigit = parseInt(roomNum[2]);
-  let type = 'Double Sharing';
-  let price = 8000;
   let bedCount = 2;
   
   if (lastDigit === 1) {
-    type = 'Single Sharing';
-    price = 15000;
     bedCount = 1;
   } else if (lastDigit === 5 || lastDigit === 6) {
-    type = 'Triple Sharing';
-    price = 6000;
     bedCount = 3;
   }
+  
+  const { type, price } = getRoomTypeAndPrice(bedCount);
   
   const beds = [];
   for (let b = 1; b <= bedCount; b++) {
@@ -81,6 +90,7 @@ const defaultRooms = generateDefaultRooms();
 const defaultTenants = [
   {
     id: 'tenant-1',
+    customerId: 'CUST-1001',
     name: 'Aaditya Sharma',
     phone: '9876543210',
     aadhaar: '1234-5678-9012',
@@ -97,6 +107,7 @@ const defaultTenants = [
   },
   {
     id: 'tenant-2',
+    customerId: 'CUST-1002',
     name: 'Rahul Verma',
     phone: '8765432109',
     aadhaar: '2345-6789-0123',
@@ -113,6 +124,7 @@ const defaultTenants = [
   },
   {
     id: 'tenant-3',
+    customerId: 'CUST-1003',
     name: 'Amit Patel',
     phone: '7654321098',
     aadhaar: '3456-7890-1234',
@@ -129,6 +141,7 @@ const defaultTenants = [
   },
   {
     id: 'tenant-4',
+    customerId: 'CUST-1004',
     name: 'Sandeep Kumar',
     phone: '6543210987',
     aadhaar: '4567-8901-2345',
@@ -145,6 +158,7 @@ const defaultTenants = [
   },
   {
     id: 'tenant-5',
+    customerId: 'CUST-1005',
     name: 'Manoj Bajpayee',
     phone: '9988776655',
     aadhaar: '5678-9012-3456',
@@ -325,7 +339,11 @@ export const AdminProvider = ({ children }) => {
 
   const [tenants, setTenants] = useState(() => {
     const saved = localStorage.getItem('db_tenants_v2');
-    return saved ? JSON.parse(saved) : defaultTenants;
+    const loaded = saved ? JSON.parse(saved) : defaultTenants;
+    return loaded.map((t, idx) => ({
+      ...t,
+      customerId: t.customerId || `CUST-${1001 + idx}`
+    }));
   });
 
   const [transactions, setTransactions] = useState(() => {
@@ -386,8 +404,9 @@ export const AdminProvider = ({ children }) => {
   // Rooms Operations
   const addRoom = (roomData) => {
     const newRoomId = `room-${Date.now()}`;
+    const bedCount = parseInt(roomData.numberOfBeds || 0);
     const generatedBeds = [];
-    for (let i = 1; i <= parseInt(roomData.numberOfBeds || 0); i++) {
+    for (let i = 1; i <= bedCount; i++) {
       generatedBeds.push({
         id: `bed-${Date.now()}-${i}`,
         number: `${i}`,
@@ -395,11 +414,12 @@ export const AdminProvider = ({ children }) => {
         tenantId: null
       });
     }
+    const { type, price } = getRoomTypeAndPrice(bedCount);
     const newRoom = {
       id: newRoomId,
       number: roomData.number,
-      type: roomData.type,
-      price: parseInt(roomData.price || 0),
+      type: type,
+      price: price,
       beds: generatedBeds
     };
     setRooms(prev => [...prev, newRoom]);
@@ -435,11 +455,13 @@ export const AdminProvider = ({ children }) => {
         }
       }
 
+      const { type, price } = getRoomTypeAndPrice(updatedBeds.length);
+
       return {
         ...room,
         number: roomData.number,
-        type: roomData.type,
-        price: parseInt(roomData.price || 0),
+        type: type,
+        price: price,
         beds: updatedBeds
       };
     }));
@@ -467,9 +489,13 @@ export const AdminProvider = ({ children }) => {
         status: 'Available',
         tenantId: null
       };
+      const updatedBeds = [...room.beds, newBed];
+      const { type, price } = getRoomTypeAndPrice(updatedBeds.length);
       return {
         ...room,
-        beds: [...room.beds, newBed]
+        beds: updatedBeds,
+        type: type,
+        price: price
       };
     }));
   };
@@ -483,9 +509,18 @@ export const AdminProvider = ({ children }) => {
     }
     setRooms(prev => prev.map(r => {
       if (r.id !== roomId) return r;
+      const updatedBeds = r.beds.filter(b => b.id !== bedId);
+      // Re-number remaining beds to keep contiguous
+      const renumberedBeds = updatedBeds.map((b, idx) => ({
+        ...b,
+        number: `${idx + 1}`
+      }));
+      const { type, price } = getRoomTypeAndPrice(renumberedBeds.length);
       return {
         ...r,
-        beds: r.beds.filter(b => b.id !== bedId)
+        beds: renumberedBeds,
+        type: type,
+        price: price
       };
     }));
     return { success: true };
@@ -511,13 +546,29 @@ export const AdminProvider = ({ children }) => {
     return { success: true };
   };
 
+  // Helper to generate unique primary key Customer ID
+  const generateNextCustomerId = () => {
+    let maxNum = 1000;
+    tenants.forEach(t => {
+      const raw = t.customerId || t.id || '';
+      const match = raw.match(/\d+/);
+      if (match) {
+        const val = parseInt(match[0], 10);
+        if (val > maxNum) maxNum = val;
+      }
+    });
+    return `CUST-${maxNum + 1}`;
+  };
+
   // Tenants Operations
   const addTenant = (tenantData) => {
+    const custId = generateNextCustomerId();
     const newTenantId = `tenant-${Date.now()}`;
     const room = rooms.find(r => r.id === tenantData.roomId);
     
     const newTenant = {
       id: newTenantId,
+      customerId: custId,
       name: tenantData.name,
       phone: tenantData.phone,
       aadhaar: tenantData.aadhaar,
@@ -620,16 +671,83 @@ export const AdminProvider = ({ children }) => {
     return { success: true };
   };
 
+  const ensureTenantForBed = (roomId, bedId) => {
+    const room = rooms.find(r => r.id === roomId);
+    if (!room) return null;
+    const bed = room.beds.find(b => b.id === bedId);
+    if (!bed) return null;
+
+    let tenant = tenants.find(t => t.roomId === roomId && t.bedId === bedId);
+    if (!tenant && bed.status === 'Occupied') {
+      const placeholderId = `tenant-temp-${Date.now()}`;
+      const placeholderName = `Guest Room ${room.number} Bed ${bed.number}`;
+      
+      const newTenantObj = {
+        id: placeholderId,
+        name: placeholderName,
+        phone: 'N/A',
+        aadhaar: 'N/A',
+        roomId: roomId,
+        roomNumber: room.number,
+        bedId: bedId,
+        bedNumber: bed.number,
+        joiningDate: new Date().toISOString().split('T')[0],
+        advancePaid: 0,
+        monthlyRent: room.price,
+        deposit: 0,
+        emergencyContact: 'N/A',
+        remarks: 'Auto-created placeholder for transfer'
+      };
+
+      setTenants(prev => [...prev, newTenantObj]);
+      setRooms(prev => prev.map(r => {
+        if (r.id !== roomId) return r;
+        return {
+          ...r,
+          beds: r.beds.map(b => (b.id === bedId ? { ...b, tenantId: placeholderId } : b))
+        };
+      }));
+
+      return placeholderId;
+    }
+    return tenant ? tenant.id : null;
+  };
+
   const moveTenant = (tenantId, newRoomId, newBedId) => {
+    console.log('moveTenant called with:', { tenantId, newRoomId, newBedId });
     const tenant = tenants.find(t => t.id === tenantId);
+    if (!tenant) {
+      console.error('moveTenant error: Tenant not found', tenantId);
+      return { success: false, message: 'Tenant not found' };
+    }
     const oldRoomId = tenant.roomId;
     const oldBedId = tenant.bedId;
 
     const newRoom = rooms.find(r => r.id === newRoomId);
+    if (!newRoom) {
+      console.error('moveTenant error: Target room not found', newRoomId);
+      return { success: false, message: 'Target room not found' };
+    }
     const newBed = newRoom.beds.find(b => b.id === newBedId);
+    if (!newBed) {
+      console.error('moveTenant error: Target bed not found', newBedId);
+      return { success: false, message: 'Target bed not found' };
+    }
 
-    // 1. Release old bed
+    // 1. Update rooms (release old bed, occupy new bed)
     setRooms(prev => prev.map(r => {
+      // If moving within the same room
+      if (oldRoomId === newRoomId && r.id === oldRoomId) {
+        return {
+          ...r,
+          beds: r.beds.map(b => {
+            if (b.id === oldBedId) return { ...b, status: 'Available', tenantId: null };
+            if (b.id === newBedId) return { ...b, status: 'Occupied', tenantId: tenantId };
+            return b;
+          })
+        };
+      }
+      // If moving to a different room
       if (r.id === oldRoomId) {
         return {
           ...r,
@@ -667,7 +785,86 @@ export const AdminProvider = ({ children }) => {
       };
     }));
 
+    console.log('moveTenant successfully completed');
     return { success: true };
+  };
+
+  const bulkImportTenants = (tenantsList) => {
+    console.log('bulkImportTenants called with:', tenantsList.length, 'tenants');
+    
+    const newTenants = [];
+    const newTransactions = [];
+    const roomsToUpdate = new Map(); // Keep track of updated beds per room
+
+    tenantsList.forEach((tenantData, index) => {
+      const tenantId = `tenant-bulk-${Date.now()}-${index}`;
+      const newTenant = {
+        id: tenantId,
+        name: tenantData.name || 'Anonymous',
+        phone: tenantData.phone || 'N/A',
+        aadhaar: tenantData.aadhaar || 'N/A',
+        roomId: tenantData.roomId,
+        roomNumber: tenantData.roomNumber,
+        bedId: tenantData.bedId,
+        bedNumber: tenantData.bedNumber,
+        joiningDate: tenantData.joiningDate || new Date().toISOString().split('T')[0],
+        advancePaid: 0,
+        monthlyRent: parseInt(tenantData.monthlyRent || 0),
+        deposit: parseInt(tenantData.deposit || 2000),
+        emergencyContact: tenantData.emergencyContact || 'N/A',
+        remarks: tenantData.remarks || 'Imported via Excel'
+      };
+      newTenants.push(newTenant);
+
+      // Create current month transaction automatically
+      const currentMonthStr = new Date().toISOString().slice(0, 7); // e.g. "2026-07"
+      const newTransaction = {
+        id: `tx-${tenantId}-${currentMonthStr}`,
+        tenantId: tenantId,
+        tenantName: newTenant.name,
+        roomNumber: newTenant.roomNumber,
+        bedNumber: newTenant.bedNumber,
+        amount: newTenant.monthlyRent,
+        dueDate: `${currentMonthStr}-05`,
+        status: 'Pending',
+        paymentDate: '',
+        paymentMode: '',
+        transactionId: '',
+        remarks: ''
+      };
+      newTransactions.push(newTransaction);
+
+      // Store bed updates
+      const key = tenantData.roomId;
+      if (!roomsToUpdate.has(key)) {
+        roomsToUpdate.set(key, []);
+      }
+      roomsToUpdate.get(key).push({ bedId: tenantData.bedId, tenantId });
+    });
+
+    // 1. Update rooms state
+    setRooms(prev => prev.map(room => {
+      if (!roomsToUpdate.has(room.id)) return room;
+      const updates = roomsToUpdate.get(room.id);
+      return {
+        ...room,
+        beds: room.beds.map(bed => {
+          const match = updates.find(u => u.bedId === bed.id);
+          if (match) {
+            return { ...bed, status: 'Occupied', tenantId: match.tenantId };
+          }
+          return bed;
+        })
+      };
+    }));
+
+    // 2. Append tenants
+    setTenants(prev => [...prev, ...newTenants]);
+
+    // 3. Append transactions
+    setTransactions(prev => [...newTransactions, ...prev]);
+
+    return { success: true, count: newTenants.length };
   };
 
   // Payments Operations
@@ -744,10 +941,12 @@ export const AdminProvider = ({ children }) => {
       addBed,
       removeBed,
       updateBedStatus,
+      ensureTenantForBed,
       addTenant,
       editTenant,
       deleteTenant,
       moveTenant,
+      bulkImportTenants,
       recordPayment,
       updateRentStatus,
       backupData,

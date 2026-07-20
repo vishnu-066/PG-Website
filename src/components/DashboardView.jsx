@@ -339,7 +339,18 @@ export default function DashboardView() {
 
         {/* Room-wise Income Bar Chart */}
         <div className="chart-card glass-card full-width">
-          <h3>Room-wise Expected Income</h3>
+          <div className="chart-title-header">
+            <h3>Room-wise Expected Income</h3>
+            <span className="scroll-hint-badge">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              <span>Scroll 32 Rooms</span>
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </span>
+          </div>
           <div className="bar-chart-container">
             {rooms.map(room => {
               // Calculate expected income for this room
@@ -364,7 +375,7 @@ export default function DashboardView() {
                     <span className="bar-value-hover">{formatCurrency(roomExpected)}</span>
                     <div className="bar-graphic" style={{ height: `${barHeight}%` }}></div>
                   </div>
-                  <span className="bar-label">Room {room.number}</span>
+                  <span className="bar-label">R-{room.number}</span>
                 </div>
               );
             })}

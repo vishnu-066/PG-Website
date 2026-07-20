@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdmin } from './AdminContext';
 
 export default function RoomView() {
@@ -10,6 +10,7 @@ export default function RoomView() {
     addBed, 
     removeBed, 
     updateBedStatus,
+    ensureTenantForBed,
     tenants,
     moveTenant
   } = useAdmin();
@@ -26,6 +27,24 @@ export default function RoomView() {
   const [roomType, setRoomType] = useState('Double Sharing');
   const [roomPrice, setRoomPrice] = useState('');
   const [roomBeds, setRoomBeds] = useState('2');
+
+  // Auto-calculate Room Type and Price based on Number of Beds in Form
+  useEffect(() => {
+    const beds = parseInt(roomBeds || 0);
+    if (beds === 1) {
+      setRoomType('Single Sharing');
+      setRoomPrice('15000');
+    } else if (beds === 2) {
+      setRoomType('Double Sharing');
+      setRoomPrice('8000');
+    } else if (beds === 3) {
+      setRoomType('Triple Sharing');
+      setRoomPrice('6000');
+    } else if (beds >= 4) {
+      setRoomType('Four Sharing');
+      setRoomPrice('5000');
+    }
+  }, [roomBeds]);
 
   // Move tenant states
   const [selectedTenantId, setSelectedTenantId] = useState('');
@@ -89,13 +108,9 @@ export default function RoomView() {
     setActiveRoom(room);
     setActiveBed(bed);
     
-    // Find tenant currently in this bed
-    const currentTenant = tenants.find(t => t.roomId === room.id && t.bedId === bed.id);
-    if (currentTenant) {
-      setSelectedTenantId(currentTenant.id);
-    } else {
-      setSelectedTenantId('');
-    }
+    // Ensure there is a tenant record associated with this occupied bed
+    const tenantId = ensureTenantForBed(room.id, bed.id);
+    setSelectedTenantId(tenantId || '');
     
     setTargetRoomId('');
     setTargetBedId('');
@@ -263,7 +278,9 @@ export default function RoomView() {
                           </svg>
                           <div className="bed-card-info">
                             <span className="bed-label-num">Bed {bed.number}</span>
-                            <span className="bed-tenant-name" title={bedStatusText}>{bedStatusText}</span>
+                            <span className="bed-tenant-name" title={tenant ? `${tenant.customerId || tenant.id} • ${tenant.name}` : bedStatusText}>
+                              {tenant ? `${tenant.customerId || tenant.id} • ${tenant.name}` : bedStatusText}
+                            </span>
                           </div>
                         </div>
                         
@@ -345,35 +362,35 @@ export default function RoomView() {
                 />
                 <label>Room Number (e.g. 106)</label>
               </div>
-              <div className="form-group-select">
-                <label>Room Type</label>
-                <select value={roomType} onChange={(e) => setRoomType(e.target.value)}>
-                  <option value="Single Sharing">Single Sharing</option>
-                  <option value="Double Sharing">Double Sharing</option>
-                  <option value="Triple Sharing">Triple Sharing</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <input
-                  type="number"
-                  placeholder=" "
-                  value={roomPrice}
-                  onChange={(e) => setRoomPrice(e.target.value)}
-                  required
-                />
-                <label>Monthly Price Per Bed (₹)</label>
-              </div>
               <div className="form-group">
                 <input
                   type="number"
                   placeholder=" "
                   min="1"
-                  max="6"
+                  max="8"
                   value={roomBeds}
                   onChange={(e) => setRoomBeds(e.target.value)}
                   required
                 />
                 <label>Initial Number of Beds</label>
+              </div>
+              <div className="form-group">
+                <input
+                  type="text"
+                  placeholder=" "
+                  value={roomType}
+                  disabled
+                />
+                <label>Room Type (Auto-calculated)</label>
+              </div>
+              <div className="form-group">
+                <input
+                  type="text"
+                  placeholder=" "
+                  value={roomPrice ? `₹${roomPrice}` : ''}
+                  disabled
+                />
+                <label>Monthly Price Per Bed (Auto-calculated)</label>
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={() => setShowAddModal(false)}>Cancel</button>
@@ -403,34 +420,35 @@ export default function RoomView() {
                 />
                 <label>Room Number</label>
               </div>
-              <div className="form-group-select">
-                <label>Room Type</label>
-                <select value={roomType} onChange={(e) => setRoomType(e.target.value)}>
-                  <option value="Single Sharing">Single Sharing</option>
-                  <option value="Double Sharing">Double Sharing</option>
-                  <option value="Triple Sharing">Triple Sharing</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <input
-                  type="number"
-                  placeholder=" "
-                  value={roomPrice}
-                  onChange={(e) => setRoomPrice(e.target.value)}
-                  required
-                />
-                <label>Monthly Price Per Bed (₹)</label>
-              </div>
               <div className="form-group">
                 <input
                   type="number"
                   placeholder=" "
                   min="1"
+                  max="8"
                   value={roomBeds}
                   onChange={(e) => setRoomBeds(e.target.value)}
                   required
                 />
                 <label>Configured Bed Count</label>
+              </div>
+              <div className="form-group">
+                <input
+                  type="text"
+                  placeholder=" "
+                  value={roomType}
+                  disabled
+                />
+                <label>Room Type (Auto-calculated)</label>
+              </div>
+              <div className="form-group">
+                <input
+                  type="text"
+                  placeholder=" "
+                  value={roomPrice ? `₹${roomPrice}` : ''}
+                  disabled
+                />
+                <label>Monthly Price Per Bed (Auto-calculated)</label>
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={() => setShowEditModal(false)}>Cancel</button>
