@@ -16,12 +16,12 @@ const TurnstileWidget = forwardRef(({
   // Expose reset method to parent
   useImperativeHandle(ref, () => ({
     reset: () => {
-      if (typeof window !== 'undefined' && window.turnstile && widgetIdRef.current !== null) {
-        try {
+      try {
+        if (typeof window !== 'undefined' && window.turnstile && widgetIdRef.current !== null) {
           window.turnstile.reset(widgetIdRef.current);
-        } catch (e) {
-          console.warn('Failed to reset Turnstile widget:', e);
         }
+      } catch (e) {
+        console.warn('Failed to reset Turnstile widget:', e);
       }
     }
   }));
@@ -35,13 +35,11 @@ const TurnstileWidget = forwardRef(({
         return;
       }
 
-      // If already rendered into this container, remove previous instance first
+      // Clean up previous widget if any
       if (widgetIdRef.current !== null) {
         try {
           window.turnstile.remove(widgetIdRef.current);
-        } catch (e) {
-          // ignore
-        }
+        } catch (e) {}
         widgetIdRef.current = null;
       }
 
@@ -73,34 +71,18 @@ const TurnstileWidget = forwardRef(({
       }
     };
 
-    const tryInit = () => {
-      if (typeof window !== 'undefined' && window.turnstile) {
-        if (typeof window.turnstile.ready === 'function') {
-          window.turnstile.ready(renderWidget);
-        } else {
-          renderWidget();
-        }
-        return true;
-      }
-      return false;
-    };
-
-    // If turnstile is already ready, render immediately
-    if (!tryInit()) {
-      // Ensure script tag exists
-      let script = document.querySelector('script[src*="turnstile/v0/api.js"]');
-      if (!script) {
-        script = document.createElement('script');
-        script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-        script.async = true;
-        document.head.appendChild(script);
-      }
-
-      // Poll every 100ms until window.turnstile is available (max 50 attempts = 5s)
+    // Safely check if window.turnstile is ready and has .render
+    if (typeof window !== 'undefined' && window.turnstile && typeof window.turnstile.render === 'function') {
+      renderWidget();
+    } else {
+      // Poll every 100ms until window.turnstile.render is available (max 60 attempts = 6s)
       let attempts = 0;
       pollTimer = setInterval(() => {
         attempts++;
-        if (tryInit() || attempts >= 50) {
+        if (typeof window !== 'undefined' && window.turnstile && typeof window.turnstile.render === 'function') {
+          if (pollTimer) clearInterval(pollTimer);
+          renderWidget();
+        } else if (attempts >= 60) {
           if (pollTimer) clearInterval(pollTimer);
         }
       }, 100);
@@ -114,9 +96,7 @@ const TurnstileWidget = forwardRef(({
       if (typeof window !== 'undefined' && window.turnstile && widgetIdRef.current !== null) {
         try {
           window.turnstile.remove(widgetIdRef.current);
-        } catch (e) {
-          // ignore
-        }
+        } catch (e) {}
         widgetIdRef.current = null;
       }
     };
@@ -132,3 +112,4 @@ const TurnstileWidget = forwardRef(({
 TurnstileWidget.displayName = 'TurnstileWidget';
 
 export default TurnstileWidget;
+

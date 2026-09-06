@@ -43,20 +43,29 @@ const faqData = [
 ];
 
 function App() {
-  const [isAdminView, setIsAdminView] = useState(() => {
+  const checkAdminRoute = () => {
     try {
-      return window.location.hash.startsWith('#/admin');
+      return (
+        window.location.hash.startsWith('#/admin') ||
+        window.location.pathname.startsWith('/admin')
+      );
     } catch (e) {
       return false;
     }
-  });
+  };
+
+  const [isAdminView, setIsAdminView] = useState(checkAdminRoute);
 
   useEffect(() => {
-    const handleHashChange = () => {
-      setIsAdminView(window.location.hash.startsWith('#/admin'));
+    const handleRouteChange = () => {
+      setIsAdminView(checkAdminRoute());
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', handleRouteChange);
+    window.addEventListener('popstate', handleRouteChange);
+    return () => {
+      window.removeEventListener('hashchange', handleRouteChange);
+      window.removeEventListener('popstate', handleRouteChange);
+    };
   }, []);
 
   const [theme, setTheme] = useState(() => {
