@@ -696,15 +696,79 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  // Rate Limiting Core (3 attempts, 3 minutes lockout)
+  const checkLockout = useCallback(() => {
+    try {
+      const lockoutUntil = parseInt(localStorage.getItem('admin_lockout_until') || '0', 10);
+      const now = Date.now();
+      if (lockoutUntil > now) {
+        const remainingSeconds = Math.ceil((lockoutUntil - now) / 1000);
+        return { isLocked: true, remainingSeconds };
+      }
+      if (lockoutUntil > 0 && lockoutUntil <= now) {
+        localStorage.removeItem('admin_lockout_until');
+        localStorage.removeItem('admin_failed_attempts');
+      }
+    } catch (e) {
+      // ignore
+    }
+    return { isLocked: false, remainingSeconds: 0 };
+  }, []);
+
+  const recordFailedAttempt = useCallback(() => {
+    try {
+      const current = parseInt(localStorage.getItem('admin_failed_attempts') || '0', 10);
+      const attempts = current + 1;
+      localStorage.setItem('admin_failed_attempts', attempts.toString());
+
+      if (attempts >= 3) {
+        const lockoutUntil = Date.now() + 3 * 60 * 1000; // 3 minutes lockout
+        localStorage.setItem('admin_lockout_until', lockoutUntil.toString());
+        return { isLocked: true, remainingAttempts: 0, lockoutSeconds: 180 };
+      }
+      return { isLocked: false, remainingAttempts: 3 - attempts, lockoutSeconds: 0 };
+    } catch (e) {
+      return { isLocked: false, remainingAttempts: 2, lockoutSeconds: 0 };
+    }
+  }, []);
+
+  const resetFailedAttempts = useCallback(() => {
+    try {
+      localStorage.removeItem('admin_failed_attempts');
+      localStorage.removeItem('admin_lockout_until');
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
   // Auth Operations with Supabase Auth
   const login = async (emailOrUsername, passwordInput) => {
+    const lockout = checkLockout();
+    if (lockout.isLocked) {
+      return { 
+        success: false, 
+        message: `Too many failed attempts. Account locked for ${lockout.remainingSeconds}s.`,
+        isLocked: true,
+        remainingSeconds: lockout.remainingSeconds
+      };
+    }
+
     if (!supabase) {
       const storedPassword = localStorage.getItem('admin_password') || 'admin123';
       if ((emailOrUsername === 'admin' || emailOrUsername === 'admin@svpg.com') && passwordInput === storedPassword) {
+        resetFailedAttempts();
         setIsAuthenticated(true);
         return { success: true };
       }
-      return { success: false, message: 'Supabase client not configured.' };
+      const attemptRes = recordFailedAttempt();
+      return { 
+        success: false, 
+        message: attemptRes.isLocked 
+          ? 'Too many failed attempts. Account login locked for 3 minutes.' 
+          : `Invalid credentials. ${attemptRes.remainingAttempts} attempt(s) remaining before 3-minute lockout.`,
+        isLocked: attemptRes.isLocked,
+        remainingSeconds: attemptRes.lockoutSeconds
+      };
     }
 
     try {
@@ -714,10 +778,20 @@ export const AdminProvider = ({ children }) => {
       });
 
       if (error) {
-        return { success: false, message: error.message };
+        const attemptRes = recordFailedAttempt();
+        const msg = attemptRes.isLocked 
+          ? 'Too many failed attempts. Account login locked for 3 minutes.' 
+          : `Invalid login credentials. ${attemptRes.remainingAttempts} attempt(s) remaining before 3-minute lockout.`;
+        return { 
+          success: false, 
+          message: msg,
+          isLocked: attemptRes.isLocked,
+          remainingSeconds: attemptRes.lockoutSeconds
+        };
       }
 
       if (data?.session) {
+        resetFailedAttempts();
         setSession(data.session);
         setUser(data.user);
         setIsAuthenticated(true);
@@ -737,6 +811,104 @@ export const AdminProvider = ({ children }) => {
     } catch (err) {
       console.error('Supabase signIn error:', err);
       return { success: false, message: err.message || 'Login failed' };
+    }
+  };
+
+  // OTP Login: Step 1 - Send 6-digit OTP code to email
+  const sendOtp = async (emailInput) => {
+    const lockout = checkLockout();
+    if (lockout.isLocked) {
+      return { 
+        success: false, 
+        message: `Too many failed attempts. Account locked for ${lockout.remainingSeconds}s.`,
+        isLocked: true,
+        remainingSeconds: lockout.remainingSeconds
+      };
+    }
+
+    if (!supabase) {
+      return { success: false, message: 'Supabase client not configured.' };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithOtp({
+        email: emailInput.trim(),
+        options: {
+          shouldCreateUser: false // Only allow registered users
+        }
+      });
+
+      if (error) {
+        if (error.message?.toLowerCase().includes('signups not allowed')) {
+          return { success: false, message: 'This email is not registered as an administrator.' };
+        }
+        return { success: false, message: error.message };
+      }
+
+      return { success: true, message: `Verification code sent to ${emailInput.trim()}` };
+    } catch (err) {
+      console.error('Supabase sendOtp error:', err);
+      return { success: false, message: err.message || 'Failed to send verification code.' };
+    }
+  };
+
+  // OTP Login: Step 2 - Verify 6-digit OTP code
+  const verifyOtp = async (emailInput, tokenInput) => {
+    const lockout = checkLockout();
+    if (lockout.isLocked) {
+      return { 
+        success: false, 
+        message: `Too many failed attempts. Account locked for ${lockout.remainingSeconds}s.`,
+        isLocked: true,
+        remainingSeconds: lockout.remainingSeconds
+      };
+    }
+
+    if (!supabase) {
+      return { success: false, message: 'Supabase client not configured.' };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: emailInput.trim(),
+        token: tokenInput.trim(),
+        type: 'email'
+      });
+
+      if (error) {
+        const attemptRes = recordFailedAttempt();
+        const msg = attemptRes.isLocked 
+          ? 'Too many failed attempts. Account login locked for 3 minutes.' 
+          : `Invalid or expired verification code. ${attemptRes.remainingAttempts} attempt(s) remaining before 3-minute lockout.`;
+        return { 
+          success: false, 
+          message: msg,
+          isLocked: attemptRes.isLocked,
+          remainingSeconds: attemptRes.lockoutSeconds
+        };
+      }
+
+      if (data?.session) {
+        resetFailedAttempts();
+        setSession(data.session);
+        setUser(data.user);
+        setIsAuthenticated(true);
+        const email = data.user.email || '';
+        const name = data.user.user_metadata?.full_name || email.split('@')[0] || 'Owner Manager';
+        const profile = {
+          id: data.user.id,
+          name,
+          email,
+          username: email.split('@')[0] || 'admin'
+        };
+        setAdminProfile(profile);
+        return { success: true };
+      }
+
+      return { success: false, message: 'Invalid verification token.' };
+    } catch (err) {
+      console.error('Supabase verifyOtp error:', err);
+      return { success: false, message: err.message || 'Verification failed' };
     }
   };
 
@@ -1591,6 +1763,11 @@ export const AdminProvider = ({ children }) => {
       seedDatabaseToSupabase,
       refreshFromSupabase: loadDataFromSupabase,
       login,
+      sendOtp,
+      verifyOtp,
+      checkLockout,
+      recordFailedAttempt,
+      resetFailedAttempts,
       logout,
       changePassword,
       updateProfile,

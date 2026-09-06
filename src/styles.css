@@ -1842,6 +1842,216 @@ footer {
   color: var(--text-muted);
 }
 
+/* Login Mode Tabs (Password vs OTP) */
+.login-mode-tabs {
+  display: flex;
+  background: var(--bg);
+  padding: 4px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  margin-bottom: 24px;
+  gap: 4px;
+}
+
+.login-mode-tabs .mode-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.login-mode-tabs .mode-tab:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.login-mode-tabs .mode-tab.active {
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.login-mode-tabs .mode-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Rate Limit Lockout Alert Banner */
+.login-lockout-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+  padding: 16px;
+  border-radius: 16px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 14px rgba(225, 29, 72, 0.08);
+  animation: shake 0.4s ease;
+}
+
+[data-theme="dark"] .login-lockout-alert {
+  background: rgba(225, 29, 72, 0.15);
+  border-color: rgba(225, 29, 72, 0.35);
+  color: #fda4af;
+}
+
+.login-lockout-alert .lockout-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  background: rgba(225, 29, 72, 0.15);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #e11d48;
+}
+
+.login-lockout-alert .lockout-info h4 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.login-lockout-alert .lockout-info p {
+  font-size: 12px;
+  margin-bottom: 8px;
+  opacity: 0.9;
+}
+
+.login-lockout-alert .lockout-timer {
+  font-size: 13px;
+  font-weight: 600;
+  color: #be123c;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 4px 10px;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+[data-theme="dark"] .login-lockout-alert .lockout-timer {
+  background: rgba(0, 0, 0, 0.25);
+  color: #fecdd3;
+}
+
+/* Success Alert */
+.login-success-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .login-success-alert {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+}
+
+/* OTP Info Box & Email Badge */
+.otp-email-badge {
+  background: rgba(var(--primary-rgb), 0.08);
+  border: 1px solid rgba(var(--primary-rgb), 0.2);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.otp-email-badge span {
+  color: var(--text-muted);
+}
+
+.otp-email-badge strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.otp-change-email-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.otp-change-email-btn:hover {
+  text-decoration: underline;
+}
+
+/* OTP 6-Digit Code Input */
+.otp-code-input {
+  text-align: center;
+  letter-spacing: 10px;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  font-family: 'Courier New', Courier, monospace;
+  padding: 14px !important;
+}
+
+/* Resend Row */
+.otp-resend-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.otp-resend-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.otp-resend-btn:hover:not(:disabled) {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.otp-resend-btn:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  text-decoration: none;
+  opacity: 0.7;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
 .spinner {
   width: 20px;
   height: 20px;
