@@ -247,34 +247,14 @@ export default function AdminLogin() {
     }
   };
 
-  // 4. Resend OTP handler
-  const handleResendOtp = async () => {
+  // 4. Resend OTP handler: returns to request step to get fresh Turnstile verification
+  const handleResendOtp = () => {
     if (resendCooldown > 0 || isLocked || isLoading) return;
-
+    setOtpStep('request');
+    setOtpCode('');
+    setCaptchaToken(null);
     setError('');
-    setSuccessMsg('');
-    setIsLoading(true);
-
-    try {
-      const res = await sendOtp(email);
-      setIsLoading(false);
-
-      if (res.success) {
-        setOtpExpiresIn(50);
-        setIsOtpExpired(false);
-        setResendCooldown(50);
-        setSuccessMsg('A new verification code has been sent (valid for 50 seconds).');
-      } else {
-        if (res.isLocked) {
-          setIsLocked(true);
-          setLockoutSeconds(res.remainingSeconds || 180);
-        }
-        setError(res.message || 'Failed to resend OTP.');
-      }
-    } catch (err) {
-      setIsLoading(false);
-      setError('Error resending verification code');
-    }
+    setSuccessMsg('Please verify security below to send a fresh code.');
   };
 
   return (
