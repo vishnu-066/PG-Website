@@ -323,14 +323,17 @@ const defaultTransactions = [
 ];
 
 export const AdminProvider = ({ children }) => {
-  // Auth state
+  // Supabase Auth state
+  const [session, setSession] = useState(null);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return localStorage.getItem('admin_authenticated') === 'true';
   });
 
   const [adminProfile, setAdminProfile] = useState(() => {
     const saved = localStorage.getItem('admin_profile');
-    return saved ? JSON.parse(saved) : { name: 'Owner Manager', username: 'admin' };
+    return saved ? JSON.parse(saved) : { name: 'Owner Manager', username: 'admin', email: 'admin@svpg.com' };
   });
 
   // DB States
@@ -357,6 +360,59 @@ export const AdminProvider = ({ children }) => {
   const [cloudStatus, setCloudStatus] = useState('initializing'); // 'connected' | 'empty' | 'rls_restricted' | 'offline'
   const [cloudMessage, setCloudMessage] = useState('');
   const [isSeeding, setIsSeeding] = useState(false);
+
+  // Sync Supabase Auth Session
+  useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        setIsAuthenticated(true);
+        const email = session.user.email || '';
+        const name = session.user.user_metadata?.full_name || email.split('@')[0] || 'Owner Manager';
+        setAdminProfile({
+          id: session.user.id,
+          name,
+          email,
+          username: email.split('@')[0] || 'admin'
+        });
+      } else {
+        setIsAuthenticated(false);
+      }
+      setAuthLoading(false);
+    }).catch(err => {
+      console.warn('Supabase getSession error:', err);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        setIsAuthenticated(true);
+        const email = session.user.email || '';
+        const name = session.user.user_metadata?.full_name || email.split('@')[0] || 'Owner Manager';
+        setAdminProfile({
+          id: session.user.id,
+          name,
+          email,
+          username: email.split('@')[0] || 'admin'
+        });
+      } else {
+        setIsAuthenticated(false);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Persist states locally as cache
   useEffect(() => {
@@ -504,6 +560,7 @@ export const AdminProvider = ({ children }) => {
         };
       });
 
+
       // Update state with cloud data
       setRooms(mappedRooms);
       setTenants(mappedTenants);
@@ -639,31 +696,140 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
-  // Auth Operations
-  const login = (username, password) => {
-    const storedPassword = localStorage.getItem('admin_password') || 'admin123';
-    if (username === adminProfile.username && password === storedPassword) {
-      setIsAuthenticated(true);
-      return { success: true };
+  // Auth Operations with Supabase Auth
+  const login = async (emailOrUsername, passwordInput) => {
+    if (!supabase) {
+      const storedPassword = localStorage.getItem('admin_password') || 'admin123';
+      if ((emailOrUsername === 'admin' || emailOrUsername === 'admin@svpg.com') && passwordInput === storedPassword) {
+        setIsAuthenticated(true);
+        return { success: true };
+      }
+      return { success: false, message: 'Supabase client not configured.' };
     }
-    return { success: false, message: 'Invalid username or password' };
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailOrUsername.trim(),
+        password: passwordInput
+      });
+
+      if (error) {
+        return { success: false, message: error.message };
+      }
+
+      if (data?.session) {
+        setSession(data.session);
+        setUser(data.user);
+        setIsAuthenticated(true);
+        const email = data.user.email || '';
+        const name = data.user.user_metadata?.full_name || email.split('@')[0] || 'Owner Manager';
+        const profile = {
+          id: data.user.id,
+          name,
+          email,
+          username: email.split('@')[0] || 'admin'
+        };
+        setAdminProfile(profile);
+        return { success: true };
+      }
+
+      return { success: false, message: 'Unable to sign in. Please verify your email and password.' };
+    } catch (err) {
+      console.error('Supabase signIn error:', err);
+      return { success: false, message: err.message || 'Login failed' };
+    }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('Supabase signOut error:', err);
+      }
+    }
+    setSession(null);
+    setUser(null);
     setIsAuthenticated(false);
   };
 
-  const changePassword = (currentPassword, newPassword) => {
-    const storedPassword = localStorage.getItem('admin_password') || 'admin123';
-    if (currentPassword === storedPassword) {
-      localStorage.setItem('admin_password', newPassword);
-      return { success: true };
+  const changePassword = async (currentPassword, newPassword) => {
+    if (supabase && (user || session)) {
+      try {
+        const currentUser = user || (await supabase.auth.getUser()).data?.user;
+        
+        // If current password provided, verify it first
+        if (currentPassword && currentUser?.email) {
+          const { error: verifyErr } = await supabase.auth.signInWithPassword({
+            email: currentUser.email,
+            password: currentPassword
+          });
+          if (verifyErr) {
+            return { success: false, message: 'Current password is incorrect.' };
+          }
+        }
+
+        const { error } = await supabase.auth.updateUser({
+          password: newPassword
+        });
+
+        if (error) {
+          return { success: false, message: error.message };
+        }
+
+        return { success: true, message: 'Password updated successfully in Supabase Auth!' };
+      } catch (err) {
+        console.error('changePassword error:', err);
+        return { success: false, message: err.message || 'Failed to update password' };
+      }
     }
-    return { success: false, message: 'Current password is incorrect' };
+
+    // Local fallback
+    localStorage.setItem('admin_password', newPassword);
+    return { success: true, message: 'Password updated locally.' };
   };
 
-  const updateProfile = (name, username) => {
-    setAdminProfile({ name, username });
+  const updateProfile = async (newName, newEmailOrUsername) => {
+    if (supabase && (user || session)) {
+      try {
+        const currentUser = user || (await supabase.auth.getUser()).data?.user;
+        const updatePayload = {
+          data: { full_name: newName }
+        };
+
+        // If an email address was provided and changed
+        if (newEmailOrUsername && newEmailOrUsername.includes('@') && newEmailOrUsername !== currentUser?.email) {
+          updatePayload.email = newEmailOrUsername.trim();
+        }
+
+        const { data, error } = await supabase.auth.updateUser(updatePayload);
+
+        if (error) {
+          return { success: false, message: error.message };
+        }
+
+        const updatedUser = data?.user || currentUser;
+        const email = updatedUser?.email || newEmailOrUsername || '';
+        const updatedProfile = {
+          id: updatedUser?.id || adminProfile.id,
+          name: newName,
+          email,
+          username: email.split('@')[0] || 'admin'
+        };
+        setAdminProfile(updatedProfile);
+        return { success: true, message: 'Profile updated successfully!' };
+      } catch (err) {
+        console.error('updateProfile error:', err);
+        return { success: false, message: err.message || 'Failed to update profile' };
+      }
+    }
+
+    setAdminProfile(prev => ({ 
+      ...prev, 
+      name: newName, 
+      email: newEmailOrUsername?.includes('@') ? newEmailOrUsername : prev.email,
+      username: newEmailOrUsername || prev.username 
+    }));
     return { success: true };
   };
 
@@ -1412,6 +1578,9 @@ export const AdminProvider = ({ children }) => {
   return (
     <AdminContext.Provider value={{
       isAuthenticated,
+      authLoading,
+      session,
+      user,
       adminProfile,
       rooms,
       tenants,

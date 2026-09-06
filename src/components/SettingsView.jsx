@@ -11,10 +11,11 @@ export default function SettingsView() {
   } = useAdmin();
 
   // Profile Form States
-  const [name, setName] = useState(adminProfile.name);
-  const [username, setUsername] = useState(adminProfile.username);
+  const [name, setName] = useState(adminProfile?.name || '');
+  const [email, setEmail] = useState(adminProfile?.email || adminProfile?.username || '');
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileError, setProfileError] = useState('');
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
   // Password Form States
   const [currentPassword, setCurrentPassword] = useState('');
@@ -22,28 +23,43 @@ export default function SettingsView() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [pwdSuccess, setPwdSuccess] = useState('');
   const [pwdError, setPwdError] = useState('');
+  const [isUpdatingPwd, setIsUpdatingPwd] = useState(false);
 
   // Backup & Restore States
   const [restoreSuccess, setRestoreSuccess] = useState('');
   const [restoreError, setRestoreError] = useState('');
 
+  // Sync with adminProfile once loaded
+  React.useEffect(() => {
+    if (adminProfile) {
+      if (adminProfile.name) setName(adminProfile.name);
+      if (adminProfile.email) setEmail(adminProfile.email);
+    }
+  }, [adminProfile]);
+
   // Handle Profile Update
-  const handleProfileSubmit = (e) => {
+  const handleProfileSubmit = async (e) => {
     e.preventDefault();
     setProfileSuccess('');
     setProfileError('');
 
-    if (!name.trim() || !username.trim()) {
+    if (!name.trim() || !email.trim()) {
       setProfileError('Fields cannot be empty');
       return;
     }
 
-    updateProfile(name, username);
-    setProfileSuccess('Profile updated successfully!');
+    setIsUpdatingProfile(true);
+    const res = await updateProfile(name, email);
+    setIsUpdatingProfile(false);
+    if (res.success) {
+      setProfileSuccess('Profile & Email updated successfully in Supabase Auth!');
+    } else {
+      setProfileError(res.message || 'Failed to update profile');
+    }
   };
 
   // Handle Password Update
-  const handlePasswordSubmit = (e) => {
+  const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     setPwdSuccess('');
     setPwdError('');
@@ -58,9 +74,11 @@ export default function SettingsView() {
       return;
     }
 
-    const res = changePassword(currentPassword, newPassword);
+    setIsUpdatingPwd(true);
+    const res = await changePassword(currentPassword, newPassword);
+    setIsUpdatingPwd(false);
     if (res.success) {
-      setPwdSuccess('Password changed successfully!');
+      setPwdSuccess('Password changed successfully in Supabase Auth!');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -120,7 +138,7 @@ export default function SettingsView() {
         {/* Profile Card */}
         <div className="settings-card glass-card">
           <h3>Admin Profile Settings</h3>
-          <p className="card-desc-muted">Manage your admin display name and login username.</p>
+          <p className="card-desc-muted">Manage your admin display name and login email.</p>
           
           {profileSuccess && <div className="settings-alert-success">{profileSuccess}</div>}
           {profileError && <div className="settings-alert-error">{profileError}</div>}
@@ -132,26 +150,30 @@ export default function SettingsView() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                disabled={isUpdatingProfile}
                 required
               />
             </div>
             <div className="form-group-flat">
-              <label>Login Username</label>
+              <label>Admin Email</label>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isUpdatingProfile}
                 required
               />
             </div>
-            <button type="submit" className="primary">Update Profile</button>
+            <button type="submit" className="primary" disabled={isUpdatingProfile}>
+              {isUpdatingProfile ? 'Updating Profile...' : 'Update Profile'}
+            </button>
           </form>
         </div>
 
         {/* Change Password Card */}
         <div className="settings-card glass-card">
           <h3>Change Security Password</h3>
-          <p className="card-desc-muted">Change your current owner portal login password.</p>
+          <p className="card-desc-muted">Change your current owner portal login password securely via Supabase Auth.</p>
 
           {pwdSuccess && <div className="settings-alert-success">{pwdSuccess}</div>}
           {pwdError && <div className="settings-alert-error">{pwdError}</div>}
@@ -164,6 +186,7 @@ export default function SettingsView() {
                 placeholder="••••••••"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
+                disabled={isUpdatingPwd}
                 required
               />
             </div>
@@ -174,6 +197,7 @@ export default function SettingsView() {
                 placeholder="Min 6 characters"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
+                disabled={isUpdatingPwd}
                 required
               />
             </div>
@@ -184,10 +208,13 @@ export default function SettingsView() {
                 placeholder="Re-enter password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={isUpdatingPwd}
                 required
               />
             </div>
-            <button type="submit" className="primary">Change Password</button>
+            <button type="submit" className="primary" disabled={isUpdatingPwd}>
+              {isUpdatingPwd ? 'Updating Password...' : 'Change Password'}
+            </button>
           </form>
         </div>
 

@@ -12,6 +12,7 @@ import logo from '../logo.jpg';
 export default function AdminPortal({ onBackToHome }) {
   const { 
     isAuthenticated, 
+    authLoading,
     adminProfile, 
     logout,
     cloudStatus,
@@ -49,6 +50,18 @@ export default function AdminPortal({ onBackToHome }) {
     setActiveTab(tab);
     setSidebarOpen(false);
   };
+
+  // Show loading spinner while Supabase verifies JWT session
+  if (authLoading) {
+    return (
+      <div className="admin-login-overlay" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <div className="spinner" style={{ width: 44, height: 44, borderWidth: 4, margin: '0 auto 1.25rem', borderColor: 'rgba(99, 102, 241, 0.2)', borderTopColor: '#6366f1' }}></div>
+          <p style={{ fontWeight: 600, fontSize: '1.05rem', color: '#4b5563' }}>Verifying secure session...</p>
+        </div>
+      </div>
+    );
+  }
 
   // If not authenticated, render Login view
   if (!isAuthenticated) {
@@ -215,7 +228,7 @@ export default function AdminPortal({ onBackToHome }) {
 
           {/* User Avatar */}
           <div className="mobile-header-avatar" onClick={() => navigateTo('settings')}>
-            {adminProfile.name.split(' ').map(n => n[0]).join('')}
+            {(adminProfile?.name || 'Admin').split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('')}
           </div>
         </div>
       </div>
@@ -325,11 +338,11 @@ export default function AdminPortal({ onBackToHome }) {
         <div className="sidebar-footer">
           <div className="admin-user-profile-badge">
             <div className="profile-initials">
-              {adminProfile.name.split(' ').map(n => n[0]).join('')}
+              {(adminProfile?.name || 'Admin').split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('')}
             </div>
             <div className="profile-details">
-              <h4>{adminProfile.name}</h4>
-              <span>@{adminProfile.username}</span>
+              <h4>{adminProfile?.name || 'Owner Manager'}</h4>
+              <span>{adminProfile?.email || (adminProfile?.username ? `@${adminProfile.username}` : 'Admin')}</span>
             </div>
           </div>
           
@@ -407,7 +420,7 @@ export default function AdminPortal({ onBackToHome }) {
             <div className="divider-h"></div>
             <div className="user-profile-badge">
               <span className="user-role-lbl">Owner</span>
-              <span className="user-name-lbl">{adminProfile.name}</span>
+              <span className="user-name-lbl">{adminProfile?.name || 'Owner Manager'}</span>
             </div>
           </div>
         </header>

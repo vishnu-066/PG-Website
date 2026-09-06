@@ -3,7 +3,7 @@ import { useAdmin } from './AdminContext';
 
 export default function AdminLogin() {
   const { login } = useAdmin();
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -13,21 +13,23 @@ export default function AdminLogin() {
     e.preventDefault();
     setError('');
     
-    if (!username.trim() || !password.trim()) {
+    if (!email.trim() || !password.trim()) {
       setError('Please fill in all fields');
       return;
     }
 
     setIsLoading(true);
     
-    // Simulate minor network delay for realism
-    setTimeout(() => {
-      const res = login(username, password);
+    try {
+      const res = await login(email, password);
       setIsLoading(false);
       if (!res.success) {
         setError(res.message || 'Incorrect credentials');
       }
-    }, 450);
+    } catch (err) {
+      setIsLoading(false);
+      setError('Connection error while logging in');
+    }
   };
 
   return (
@@ -58,20 +60,21 @@ export default function AdminLogin() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-input-group">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="email">Admin Email</label>
             <div className="input-wrapper">
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" className="input-icon">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                <polyline points="22,6 12,13 2,6" />
               </svg>
               <input
-                id="username"
-                type="text"
-                placeholder="Enter username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                id="email"
+                type="email"
+                placeholder="admin@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 disabled={isLoading}
                 required
+                autoComplete="email"
               />
             </div>
           </div>
@@ -133,7 +136,7 @@ export default function AdminLogin() {
         </form>
 
         <div className="login-footer">
-          <p>Protected by secure local session tokens.</p>
+          <p>Protected by Supabase Auth cryptographic JWT sessions.</p>
         </div>
       </div>
     </div>
