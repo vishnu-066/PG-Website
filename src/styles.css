@@ -2003,11 +2003,68 @@ footer {
   text-decoration: underline;
 }
 
-/* OTP 6-Digit Code Input */
+/* OTP 50-Second Countdown & Expired Badges */
+.otp-countdown-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(var(--primary-rgb), 0.08);
+  border: 1px solid rgba(var(--primary-rgb), 0.2);
+  color: var(--primary);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  transition: all 0.3s ease;
+}
+
+.otp-countdown-badge strong {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+}
+
+.otp-countdown-badge.warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+  animation: pulse 1s infinite;
+}
+
+[data-theme="dark"] .otp-countdown-badge.warning {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+}
+
+.otp-expired-alert {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #fdf2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  animation: fadeIn 0.3s ease;
+}
+
+[data-theme="dark"] .otp-expired-alert {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+/* OTP Code Input (Supports 6 to 8+ digits) */
 .otp-code-input {
   text-align: center;
-  letter-spacing: 10px;
-  font-size: 22px !important;
+  letter-spacing: 6px;
+  font-size: 20px !important;
   font-weight: 700 !important;
   font-family: 'Courier New', Courier, monospace;
   padding: 14px !important;
@@ -4907,4 +4964,19 @@ footer {
 
 .clickable-tenant-cell:hover .tenant-name-span {
   text-decoration: underline;
+}
+
+/* Cloudflare Turnstile Bot Defense Widget */
+.turnstile-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 14px 0 6px 0;
+  min-height: 65px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.turnstile-wrapper .cf-turnstile {
+  max-width: 100%;
 }

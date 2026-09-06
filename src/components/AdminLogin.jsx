@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAdmin } from './AdminContext';
+import TurnstileWidget from './TurnstileWidget';
 
 export default function AdminLogin() {
   const { login, sendOtp, verifyOtp, checkLockout } = useAdmin();
@@ -13,6 +14,10 @@ export default function AdminLogin() {
   const [otpCode, setOtpCode] = useState('');
   const [otpStep, setOtpStep] = useState('request'); // 'request' | 'verify'
 
+  // Cloudflare Turnstile Bot Protection
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const turnstileRef = useRef(null);
+
   // UI / Status states
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -23,7 +28,11 @@ export default function AdminLogin() {
   const [isLocked, setIsLocked] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
 
-  // OTP resend cooldown timer (60 seconds)
+  // OTP 50-second expiration states
+  const [otpExpiresIn, setOtpExpiresIn] = useState(0);
+  const [isOtpExpired, setIsOtpExpired] = useState(false);
+
+  // OTP resend cooldown timer (50 seconds)
   const [resendCooldown, setResendCooldown] = useState(0);
 
   // Check initial lockout state on mount
@@ -70,6 +79,27 @@ export default function AdminLogin() {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
+  // OTP 50-second live expiration countdown timer
+  useEffect(() => {
+    if (authMode !== 'otp' || otpStep !== 'verify') return;
+    if (otpExpiresIn <= 0) {
+      setIsOtpExpired(true);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setOtpExpiresIn((prev) => {
+        if (prev <= 1) {
+          setIsOtpExpired(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [otpExpiresIn, authMode, otpStep]);
+
   // Format MM:SS for timers
   const formatTime = (totalSeconds) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -85,6 +115,10 @@ export default function AdminLogin() {
     setSuccessMsg('');
     setOtpStep('request');
     setOtpCode('');
+    setOtpExpiresIn(0);
+    setIsOtpExpired(false);
+    setCaptchaToken(null);
+    turnstileRef.current?.reset();
   };
 
   // 1. Password Login Handler
@@ -103,10 +137,12 @@ export default function AdminLogin() {
     setIsLoading(true);
 
     try {
-      const res = await login(email, password);
+      const res = await login(email, password, captchaToken);
       setIsLoading(false);
 
       if (!res.success) {
+        turnstileRef.current?.reset();
+        setCaptchaToken(null);
         if (res.isLocked) {
           setIsLocked(true);
           setLockoutSeconds(res.remainingSeconds || 180);
@@ -115,6 +151,8 @@ export default function AdminLogin() {
       }
     } catch (err) {
       setIsLoading(false);
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
       setError('Connection error while logging in');
     }
   };
@@ -135,14 +173,18 @@ export default function AdminLogin() {
     setIsLoading(true);
 
     try {
-      const res = await sendOtp(email);
+      const res = await sendOtp(email, captchaToken);
       setIsLoading(false);
 
       if (res.success) {
         setOtpStep('verify');
-        setResendCooldown(60);
-        setSuccessMsg(res.message || '6-digit verification code sent to your email.');
+        setOtpExpiresIn(50);
+        setIsOtpExpired(false);
+        setResendCooldown(50);
+        setSuccessMsg(res.message || 'Verification code sent to your email (valid for 50 seconds).');
       } else {
+        turnstileRef.current?.reset();
+        setCaptchaToken(null);
         if (res.isLocked) {
           setIsLocked(true);
           setLockoutSeconds(res.remainingSeconds || 180);
@@ -151,6 +193,8 @@ export default function AdminLogin() {
       }
     } catch (err) {
       setIsLoading(false);
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
       setError('Connection error while requesting OTP code');
     }
   };
@@ -163,9 +207,14 @@ export default function AdminLogin() {
 
     if (isLocked) return;
 
+    if (isOtpExpired || otpExpiresIn <= 0) {
+      setError('Verification code has expired (50-second security limit). Please click Resend Code.');
+      return;
+    }
+
     const cleanedCode = otpCode.trim();
     if (!cleanedCode || cleanedCode.length < 6) {
-      setError('Please enter the complete 6-digit code');
+      setError('Please enter the complete verification code');
       return;
     }
 
@@ -201,8 +250,10 @@ export default function AdminLogin() {
       setIsLoading(false);
 
       if (res.success) {
-        setResendCooldown(60);
-        setSuccessMsg('A new verification code has been sent.');
+        setOtpExpiresIn(50);
+        setIsOtpExpired(false);
+        setResendCooldown(50);
+        setSuccessMsg('A new verification code has been sent (valid for 50 seconds).');
       } else {
         if (res.isLocked) {
           setIsLocked(true);
@@ -364,6 +415,15 @@ export default function AdminLogin() {
               </div>
             </div>
 
+            {/* Cloudflare Turnstile CAPTCHA */}
+            <TurnstileWidget
+              ref={turnstileRef}
+              action="login"
+              onSuccess={(token) => setCaptchaToken(token)}
+              onExpire={() => setCaptchaToken(null)}
+              onError={() => setCaptchaToken(null)}
+            />
+
             <button
               type="submit"
               className="login-submit-btn"
@@ -411,6 +471,15 @@ export default function AdminLogin() {
               A 6-digit one-time verification code will be sent to your registered admin email.
             </p>
 
+            {/* Cloudflare Turnstile CAPTCHA */}
+            <TurnstileWidget
+              ref={turnstileRef}
+              action="otp_request"
+              onSuccess={(token) => setCaptchaToken(token)}
+              onExpire={() => setCaptchaToken(null)}
+              onError={() => setCaptchaToken(null)}
+            />
+
             <button
               type="submit"
               className="login-submit-btn"
@@ -446,20 +515,40 @@ export default function AdminLogin() {
               </button>
             </div>
 
+            {/* Live 50-Second Expiry Countdown / Alert */}
+            {!isOtpExpired ? (
+              <div className={`otp-countdown-badge ${otpExpiresIn <= 15 ? 'warning' : ''}`}>
+                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2" fill="none">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                <span>Code expires in: <strong>{formatTime(otpExpiresIn)}</strong></span>
+              </div>
+            ) : (
+              <div className="otp-expired-alert animate-fade-in">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <span>Code expired! Please click <strong>Resend Code</strong> below.</span>
+              </div>
+            )}
+
             <div className="form-input-group">
-              <label htmlFor="otp-code">Enter 6-Digit Code</label>
+              <label htmlFor="otp-code">Enter Verification Code</label>
               <div className="input-wrapper">
                 <input
                   id="otp-code"
                   type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  maxLength={6}
-                  placeholder="••••••"
+                  maxLength={10}
+                  placeholder="••••••••"
                   className="otp-code-input"
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                  disabled={isLoading || isLocked}
+                  disabled={isLoading || isLocked || isOtpExpired}
                   required
                   autoFocus
                 />
@@ -481,10 +570,12 @@ export default function AdminLogin() {
             <button
               type="submit"
               className="login-submit-btn"
-              disabled={isLoading || isLocked || otpCode.length < 6}
+              disabled={isLoading || isLocked || isOtpExpired || otpCode.length < 6}
             >
               {isLoading ? (
                 <span className="spinner"></span>
+              ) : isOtpExpired ? (
+                <span>Code Expired — Request New Code</span>
               ) : (
                 <>
                   <span>Verify Code & Sign In</span>

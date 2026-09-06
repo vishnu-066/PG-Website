@@ -742,7 +742,7 @@ export const AdminProvider = ({ children }) => {
   }, []);
 
   // Auth Operations with Supabase Auth
-  const login = async (emailOrUsername, passwordInput) => {
+  const login = async (emailOrUsername, passwordInput, captchaToken = null) => {
     const lockout = checkLockout();
     if (lockout.isLocked) {
       return { 
@@ -772,10 +772,15 @@ export const AdminProvider = ({ children }) => {
     }
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const signInPayload = {
         email: emailOrUsername.trim(),
         password: passwordInput
-      });
+      };
+      if (captchaToken) {
+        signInPayload.options = { captchaToken };
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword(signInPayload);
 
       if (error) {
         const attemptRes = recordFailedAttempt();
@@ -814,8 +819,8 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
-  // OTP Login: Step 1 - Send 6-digit OTP code to email
-  const sendOtp = async (emailInput) => {
+  // OTP Login: Step 1 - Send OTP code to email (with 50s expiry limit & optional captcha)
+  const sendOtp = async (emailInput, captchaToken = null) => {
     const lockout = checkLockout();
     if (lockout.isLocked) {
       return { 
@@ -831,11 +836,16 @@ export const AdminProvider = ({ children }) => {
     }
 
     try {
+      const otpOptions = {
+        shouldCreateUser: false // Only allow registered users
+      };
+      if (captchaToken) {
+        otpOptions.captchaToken = captchaToken;
+      }
+
       const { data, error } = await supabase.auth.signInWithOtp({
         email: emailInput.trim(),
-        options: {
-          shouldCreateUser: false // Only allow registered users
-        }
+        options: otpOptions
       });
 
       if (error) {
@@ -845,15 +855,23 @@ export const AdminProvider = ({ children }) => {
         return { success: false, message: error.message };
       }
 
-      return { success: true, message: `Verification code sent to ${emailInput.trim()}` };
+      // Record 50-second expiry timestamp
+      const expiryTimestamp = Date.now() + 50 * 1000;
+      localStorage.setItem('admin_otp_expiry', expiryTimestamp.toString());
+
+      return { 
+        success: true, 
+        message: `Verification code sent to ${emailInput.trim()}`,
+        expiresInSeconds: 50
+      };
     } catch (err) {
       console.error('Supabase sendOtp error:', err);
       return { success: false, message: err.message || 'Failed to send verification code.' };
     }
   };
 
-  // OTP Login: Step 2 - Verify 6-digit OTP code
-  const verifyOtp = async (emailInput, tokenInput) => {
+  // OTP Login: Step 2 - Verify OTP code (enforcing 50s expiry & optional captcha)
+  const verifyOtp = async (emailInput, tokenInput, captchaToken = null) => {
     const lockout = checkLockout();
     if (lockout.isLocked) {
       return { 
@@ -864,16 +882,32 @@ export const AdminProvider = ({ children }) => {
       };
     }
 
+    // Check 50-second expiration limit
+    const storedExpiry = parseInt(localStorage.getItem('admin_otp_expiry') || '0', 10);
+    if (storedExpiry > 0 && Date.now() > storedExpiry) {
+      localStorage.removeItem('admin_otp_expiry');
+      return {
+        success: false,
+        isExpired: true,
+        message: 'Verification code has expired (50-second security limit). Please request a new code.'
+      };
+    }
+
     if (!supabase) {
       return { success: false, message: 'Supabase client not configured.' };
     }
 
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
+      const verifyPayload = {
         email: emailInput.trim(),
         token: tokenInput.trim(),
         type: 'email'
-      });
+      };
+      if (captchaToken) {
+        verifyPayload.options = { captchaToken };
+      }
+
+      const { data, error } = await supabase.auth.verifyOtp(verifyPayload);
 
       if (error) {
         const attemptRes = recordFailedAttempt();
@@ -889,6 +923,7 @@ export const AdminProvider = ({ children }) => {
       }
 
       if (data?.session) {
+        localStorage.removeItem('admin_otp_expiry');
         resetFailedAttempts();
         setSession(data.session);
         setUser(data.user);
