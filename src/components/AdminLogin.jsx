@@ -134,6 +134,11 @@ export default function AdminLogin() {
       return;
     }
 
+    if (!captchaToken) {
+      setError('Please complete the security verification below before logging in.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -167,6 +172,11 @@ export default function AdminLogin() {
 
     if (!email.trim()) {
       setError('Please enter your admin email');
+      return;
+    }
+
+    if (!captchaToken) {
+      setError('Please complete the security verification below before requesting a code.');
       return;
     }
 
@@ -419,9 +429,15 @@ export default function AdminLogin() {
             <TurnstileWidget
               ref={turnstileRef}
               action="login"
-              onSuccess={(token) => setCaptchaToken(token)}
+              onSuccess={(token) => {
+                setCaptchaToken(token);
+                setError('');
+              }}
               onExpire={() => setCaptchaToken(null)}
-              onError={() => setCaptchaToken(null)}
+              onError={(code) => {
+                setCaptchaToken(null);
+                setError(`Security verification issue (${code || 'failed'}). If using a custom domain, ensure it is added in your Cloudflare Turnstile dashboard.`);
+              }}
             />
 
             <button
@@ -475,9 +491,15 @@ export default function AdminLogin() {
             <TurnstileWidget
               ref={turnstileRef}
               action="otp_request"
-              onSuccess={(token) => setCaptchaToken(token)}
+              onSuccess={(token) => {
+                setCaptchaToken(token);
+                setError('');
+              }}
               onExpire={() => setCaptchaToken(null)}
-              onError={() => setCaptchaToken(null)}
+              onError={(code) => {
+                setCaptchaToken(null);
+                setError(`Security verification issue (${code || 'failed'}). If using a custom domain, ensure it is added in your Cloudflare Turnstile dashboard.`);
+              }}
             />
 
             <button

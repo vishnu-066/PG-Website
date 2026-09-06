@@ -1,6 +1,5 @@
-﻿import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 
-const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
 const DEFAULT_TEST_SITE_KEY = '1x00000000000000000000AA'; // Cloudflare official always-pass test key
 
 const TurnstileWidget = forwardRef(({ 
@@ -17,7 +16,7 @@ const TurnstileWidget = forwardRef(({
   // Expose reset method to parent
   useImperativeHandle(ref, () => ({
     reset: () => {
-      if (window.turnstile && widgetIdRef.current) {
+      if (typeof window !== 'undefined' && window.turnstile && widgetIdRef.current !== null) {
         try {
           window.turnstile.reset(widgetIdRef.current);
         } catch (e) {
@@ -29,77 +28,103 @@ const TurnstileWidget = forwardRef(({
 
   useEffect(() => {
     let isMounted = true;
+    let pollTimer = null;
 
     const renderWidget = () => {
-      if (!isMounted || !containerRef.current || !window.turnstile) return;
+      if (!isMounted || !containerRef.current || typeof window === 'undefined' || !window.turnstile) {
+        return;
+      }
 
-      // Clean up previous widget if any
+      // If already rendered into this container, remove previous instance first
       if (widgetIdRef.current !== null) {
         try {
           window.turnstile.remove(widgetIdRef.current);
-          widgetIdRef.current = null;
         } catch (e) {
           // ignore
         }
+        widgetIdRef.current = null;
       }
 
       try {
-        widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        const id = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
           theme: theme === 'auto' ? (document.documentElement.getAttribute('data-theme') || 'light') : theme,
           callback: (token) => {
-            if (isMounted && onSuccess) onSuccess(token);
+            if (isMounted && onSuccess) {
+              onSuccess(token);
+            }
           },
-          'error-callback': () => {
-            if (isMounted && onError) onError();
+          'error-callback': (errorCode) => {
+            console.error('Cloudflare Turnstile error code:', errorCode);
+            if (isMounted && onError) {
+              onError(errorCode);
+            }
           },
           'expired-callback': () => {
-            if (isMounted && onExpire) onExpire();
+            if (isMounted && onExpire) {
+              onExpire();
+            }
           },
           action: action
         });
+        widgetIdRef.current = id;
       } catch (err) {
         console.warn('Error rendering Turnstile:', err);
       }
     };
 
-    // Check if Turnstile script is already loaded
-    if (window.turnstile) {
-      renderWidget();
-    } else {
-      // Load script if not already present
-      let script = document.querySelector(`script[src="${TURNSTILE_SCRIPT_URL}"]`);
+    const tryInit = () => {
+      if (typeof window !== 'undefined' && window.turnstile) {
+        if (typeof window.turnstile.ready === 'function') {
+          window.turnstile.ready(renderWidget);
+        } else {
+          renderWidget();
+        }
+        return true;
+      }
+      return false;
+    };
+
+    // If turnstile is already ready, render immediately
+    if (!tryInit()) {
+      // Ensure script tag exists
+      let script = document.querySelector('script[src*="turnstile/v0/api.js"]');
       if (!script) {
         script = document.createElement('script');
-        script.src = TURNSTILE_SCRIPT_URL;
+        script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
         script.async = true;
-        script.defer = true;
         document.head.appendChild(script);
       }
 
-      const prevOnload = script.onload;
-      script.onload = () => {
-        if (typeof prevOnload === 'function') prevOnload();
-        if (isMounted) renderWidget();
-      };
+      // Poll every 100ms until window.turnstile is available (max 50 attempts = 5s)
+      let attempts = 0;
+      pollTimer = setInterval(() => {
+        attempts++;
+        if (tryInit() || attempts >= 50) {
+          if (pollTimer) clearInterval(pollTimer);
+        }
+      }, 100);
     }
 
     return () => {
       isMounted = false;
-      if (window.turnstile && widgetIdRef.current !== null) {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+      }
+      if (typeof window !== 'undefined' && window.turnstile && widgetIdRef.current !== null) {
         try {
           window.turnstile.remove(widgetIdRef.current);
-          widgetIdRef.current = null;
         } catch (e) {
           // ignore
         }
+        widgetIdRef.current = null;
       }
     };
   }, [siteKey, theme, action]);
 
   return (
-    <div className="turnstile-wrapper" style={{ display: 'flex', justifyContent: 'center', margin: '14px 0' }}>
-      <div ref={containerRef} className="cf-turnstile" />
+    <div className="turnstile-wrapper">
+      <div ref={containerRef} className="cf-turnstile-container" />
     </div>
   );
 });
