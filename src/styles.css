@@ -2086,6 +2086,77 @@ footer {
   gap: 16px;
 }
 
+/* Cloud DB Status Badge */
+.cloud-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.cloud-status-badge .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.cloud-status-badge.connected {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.08);
+  color: #16a34a;
+}
+.cloud-status-badge.connected .status-dot {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
+
+.cloud-status-badge.empty,
+.cloud-status-badge.initializing {
+  border-color: rgba(234, 179, 8, 0.3);
+  background: rgba(234, 179, 8, 0.08);
+  color: #ca8a04;
+}
+.cloud-status-badge.empty .status-dot,
+.cloud-status-badge.initializing .status-dot {
+  background: #eab308;
+}
+
+.cloud-status-badge.rls_restricted,
+.cloud-status-badge.offline {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+}
+.cloud-status-badge.rls_restricted .status-dot,
+.cloud-status-badge.offline .status-dot {
+  background: #ef4444;
+}
+
+.cloud-status-badge .seed-cloud-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.cloud-status-badge .seed-cloud-btn:hover {
+  opacity: 0.9;
+  transform: scale(1.02);
+}
+
 .admin-header-theme-toggle {
   background: none;
   border: none;

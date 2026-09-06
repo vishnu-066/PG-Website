@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
 const AdminContext = createContext();
 
@@ -202,8 +203,8 @@ const defaultTransactions = [
     status: 'Paid',
     paymentDate: '2026-06-05',
     paymentMode: 'Cash',
-    transactionId: 'CASH-JUNE-02',
-    remarks: ''
+    transactionId: 'CASH-REC-01',
+    remarks: 'Handed over in person.'
   },
   {
     id: 'tx-3-june',
@@ -215,9 +216,9 @@ const defaultTransactions = [
     dueDate: '2026-06-05',
     status: 'Paid',
     paymentDate: '2026-06-03',
-    paymentMode: 'Net Banking',
-    transactionId: 'NBTXN8812903',
-    remarks: ''
+    paymentMode: 'UPI',
+    transactionId: 'UPI90812344',
+    remarks: 'Google Pay transfer.'
   },
   {
     id: 'tx-4-june',
@@ -228,10 +229,10 @@ const defaultTransactions = [
     amount: 6000,
     dueDate: '2026-06-05',
     status: 'Paid',
-    paymentDate: '2026-06-07',
+    paymentDate: '2026-06-06',
     paymentMode: 'UPI',
-    transactionId: 'TXN67128892',
-    remarks: 'Paid late with warning.'
+    transactionId: 'TXN11223344',
+    remarks: 'Paid via PhonePe.'
   },
   {
     id: 'tx-5-june',
@@ -242,12 +243,13 @@ const defaultTransactions = [
     amount: 8000,
     dueDate: '2026-06-05',
     status: 'Paid',
-    paymentDate: '2026-06-04',
-    paymentMode: 'UPI',
-    transactionId: 'TXN67129001',
-    remarks: ''
+    paymentDate: '2026-06-05',
+    paymentMode: 'NetBanking',
+    transactionId: 'IMPS44556677',
+    remarks: 'IMPS transfer from HDFC.'
   },
-  // July Payments (mix of Paid, Pending, Late)
+
+  // July Payments (Mixed status)
   {
     id: 'tx-1-july',
     tenantId: 'tenant-1',
@@ -257,10 +259,10 @@ const defaultTransactions = [
     amount: 15000,
     dueDate: '2026-07-05',
     status: 'Paid',
-    paymentDate: '2026-07-04',
+    paymentDate: '2026-07-03',
     paymentMode: 'UPI',
-    transactionId: 'TXN77890123',
-    remarks: 'Paid early.'
+    transactionId: 'UPI88997711',
+    remarks: 'Early payment discount applicable if any.'
   },
   {
     id: 'tx-2-july',
@@ -270,11 +272,11 @@ const defaultTransactions = [
     bedNumber: '1',
     amount: 8000,
     dueDate: '2026-07-05',
-    status: 'Pending',
+    status: 'Late',
     paymentDate: '',
     paymentMode: '',
     transactionId: '',
-    remarks: 'Asked for extension till 10th.'
+    remarks: 'Follow up required; phone was switched off.'
   },
   {
     id: 'tx-3-july',
@@ -286,9 +288,9 @@ const defaultTransactions = [
     dueDate: '2026-07-05',
     status: 'Paid',
     paymentDate: '2026-07-05',
-    paymentMode: 'Net Banking',
-    transactionId: 'NBTXN990182',
-    remarks: ''
+    paymentMode: 'UPI',
+    transactionId: 'UPI44332211',
+    remarks: 'Cleared dues on due date.'
   },
   {
     id: 'tx-4-july',
@@ -298,11 +300,11 @@ const defaultTransactions = [
     bedNumber: '1',
     amount: 6000,
     dueDate: '2026-07-05',
-    status: 'Late',
+    status: 'Pending',
     paymentDate: '',
     paymentMode: '',
     transactionId: '',
-    remarks: 'No response to reminder.'
+    remarks: 'Promised to pay by 12th July.'
   },
   {
     id: 'tx-5-july',
@@ -313,10 +315,10 @@ const defaultTransactions = [
     amount: 8000,
     dueDate: '2026-07-05',
     status: 'Paid',
-    paymentDate: '2026-07-06',
-    paymentMode: 'UPI',
-    transactionId: 'TXN77890456',
-    remarks: '1 day late payment.'
+    paymentDate: '2026-07-04',
+    paymentMode: 'Cash',
+    transactionId: 'CASH-REC-02',
+    remarks: 'Received in cash at PG office.'
   }
 ];
 
@@ -351,7 +353,12 @@ export const AdminProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : defaultTransactions;
   });
 
-  // Persist states
+  // Cloud Sync states
+  const [cloudStatus, setCloudStatus] = useState('initializing'); // 'connected' | 'empty' | 'rls_restricted' | 'offline'
+  const [cloudMessage, setCloudMessage] = useState('');
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  // Persist states locally as cache
   useEffect(() => {
     localStorage.setItem('admin_authenticated', isAuthenticated.toString());
   }, [isAuthenticated]);
@@ -372,9 +379,268 @@ export const AdminProvider = ({ children }) => {
     localStorage.setItem('db_transactions_v2', JSON.stringify(transactions));
   }, [transactions]);
 
+  // Load from Supabase
+  const loadDataFromSupabase = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      setCloudStatus('offline');
+      setCloudMessage('Supabase client not configured.');
+      return;
+    }
+
+    try {
+      // 1. Fetch rooms and beds
+      const { data: roomsData, error: roomsErr } = await supabase
+        .from('rooms')
+        .select('*, beds(*)');
+
+      if (roomsErr) {
+        if (roomsErr.code === '42501') {
+          setCloudStatus('rls_restricted');
+          setCloudMessage('RLS policy is blocking access. Please allow anon access in Supabase SQL editor.');
+        } else {
+          setCloudStatus('offline');
+          setCloudMessage(`Supabase error: ${roomsErr.message}`);
+        }
+        return;
+      }
+
+      // If database has 0 rooms, it is newly created and empty
+      if (!roomsData || roomsData.length === 0) {
+        setCloudStatus('empty');
+        setCloudMessage('Connected to Supabase! Database is currently empty.');
+        return;
+      }
+
+      // 2. Fetch tenants
+      const { data: tenantsData, error: tenantsErr } = await supabase
+        .from('tenants')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (tenantsErr) {
+        console.warn('Error loading tenants from Supabase:', tenantsErr);
+      }
+
+      // 3. Fetch transactions
+      const { data: txData, error: txErr } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (txErr) {
+        console.warn('Error loading transactions from Supabase:', txErr);
+      }
+
+      // Map Supabase rooms to application format
+      const mappedRooms = (roomsData || []).map(r => ({
+        id: r.id,
+        number: r.room_number,
+        type: r.room_type,
+        price: Number(r.price),
+        beds: (r.beds || [])
+          .sort((a, b) => Number(a.bed_number) - Number(b.bed_number))
+          .map(b => ({
+            id: b.id,
+            number: String(b.bed_number),
+            status: b.status || 'Available',
+            tenantId: null
+          }))
+      }));
+
+      // Map Supabase tenants to application format
+      const mappedTenants = (tenantsData || []).map(t => {
+        const room = mappedRooms.find(r => r.id === t.room_id);
+        const bed = room ? room.beds.find(b => b.id === t.bed_id) : null;
+        return {
+          id: t.id,
+          customerId: t.customer_id,
+          name: t.name,
+          phone: t.phone,
+          aadhaar: t.aadhaar || '',
+          roomId: t.room_id,
+          roomNumber: room ? room.number : '',
+          bedId: t.bed_id,
+          bedNumber: bed ? bed.number : '',
+          joiningDate: t.joining_date,
+          advancePaid: Number(t.advance_paid || 0),
+          monthlyRent: Number(t.monthly_rent || 0),
+          deposit: Number(t.deposit || 0),
+          emergencyContact: t.emergency_contact || '',
+          remarks: t.remarks || '',
+          status: t.status || 'Active'
+        };
+      });
+
+      // Update bed occupants in mappedRooms
+      mappedTenants.forEach(t => {
+        if (t.status === 'Active' && t.roomId && t.bedId) {
+          const r = mappedRooms.find(rm => rm.id === t.roomId);
+          if (r) {
+            const b = r.beds.find(bd => bd.id === t.bedId);
+            if (b) {
+              b.status = 'Occupied';
+              b.tenantId = t.id;
+            }
+          }
+        }
+      });
+
+      // Map Supabase transactions to application format
+      const mappedTx = (txData || []).map(tx => {
+        const tenant = mappedTenants.find(t => t.id === tx.tenant_id);
+        return {
+          id: tx.id,
+          tenantId: tx.tenant_id,
+          tenantName: tenant ? tenant.name : 'Unknown Tenant',
+          roomNumber: tenant ? tenant.roomNumber : '',
+          bedNumber: tenant ? tenant.bedNumber : '',
+          amount: Number(tx.amount || 0),
+          dueDate: tx.due_date,
+          status: tx.status,
+          paymentDate: tx.payment_date || '',
+          paymentMode: tx.payment_mode || '',
+          transactionId: tx.transaction_id || '',
+          remarks: tx.remarks || ''
+        };
+      });
+
+      // Update state with cloud data
+      setRooms(mappedRooms);
+      setTenants(mappedTenants);
+      setTransactions(mappedTx);
+      setCloudStatus('connected');
+      setCloudMessage('Live connected to Supabase.');
+    } catch (err) {
+      console.error('Error connecting to Supabase:', err);
+      setCloudStatus('offline');
+      setCloudMessage(err.message || 'Failed to connect to Supabase.');
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadDataFromSupabase();
+  }, [loadDataFromSupabase]);
+
+  // One-click Seed Initial PG Data into Supabase
+  const seedDatabaseToSupabase = async () => {
+    if (!supabase) return { success: false, message: 'Supabase client unavailable' };
+    setIsSeeding(true);
+
+    try {
+      // 1. Insert Rooms
+      const roomInsertPayload = defaultRooms.map(r => ({
+        room_number: r.number,
+        room_type: r.type,
+        price: r.price
+      }));
+
+      const { data: insertedRooms, error: roomErr } = await supabase
+        .from('rooms')
+        .insert(roomInsertPayload)
+        .select();
+
+      if (roomErr) throw roomErr;
+
+      // 2. Insert Beds
+      const bedInsertPayload = [];
+      const roomMap = new Map(); // room_number -> inserted room object
+
+      insertedRooms.forEach(r => {
+        roomMap.set(r.room_number, r);
+        const original = defaultRooms.find(dr => dr.number === r.room_number);
+        if (original) {
+          original.beds.forEach(b => {
+            bedInsertPayload.push({
+              room_id: r.id,
+              bed_number: String(b.number),
+              status: 'Available'
+            });
+          });
+        }
+      });
+
+      const { data: insertedBeds, error: bedErr } = await supabase
+        .from('beds')
+        .insert(bedInsertPayload)
+        .select();
+
+      if (bedErr) throw bedErr;
+
+      // Helper map for (room_id + bed_number) -> bed.id
+      const bedMap = new Map();
+      insertedBeds.forEach(b => {
+        bedMap.set(`${b.room_id}_${b.bed_number}`, b.id);
+      });
+
+      // 3. Insert Default Tenants
+      const tenantInsertPayload = defaultTenants.map(t => {
+        const roomObj = roomMap.get(t.roomNumber);
+        const roomId = roomObj ? roomObj.id : null;
+        const bedId = roomId ? bedMap.get(`${roomId}_${t.bedNumber}`) : null;
+
+        return {
+          customer_id: t.customerId,
+          name: t.name,
+          phone: t.phone,
+          aadhaar: t.aadhaar,
+          room_id: roomId,
+          bed_id: bedId,
+          joining_date: t.joiningDate,
+          advance_paid: t.advancePaid,
+          monthly_rent: t.monthlyRent,
+          deposit: t.deposit,
+          emergency_contact: t.emergencyContact,
+          remarks: t.remarks,
+          status: 'Active'
+        };
+      });
+
+      const { data: insertedTenants, error: tenantErr } = await supabase
+        .from('tenants')
+        .insert(tenantInsertPayload)
+        .select();
+
+      if (tenantErr) throw tenantErr;
+
+      // Map original tenant ID (e.g. 'tenant-1') to inserted tenant ID
+      const tenantIdMap = new Map();
+      insertedTenants.forEach(it => {
+        const orig = defaultTenants.find(dt => dt.customerId === it.customer_id);
+        if (orig) tenantIdMap.set(orig.id, it.id);
+      });
+
+      // 4. Insert Default Transactions
+      const txInsertPayload = defaultTransactions.map(tx => ({
+        tenant_id: tenantIdMap.get(tx.tenantId) || insertedTenants[0].id,
+        amount: tx.amount,
+        due_date: tx.dueDate,
+        status: tx.status,
+        payment_date: tx.paymentDate || null,
+        payment_mode: tx.paymentMode || null,
+        transaction_id: tx.transactionId || null,
+        remarks: tx.remarks
+      }));
+
+      const { error: txErr } = await supabase
+        .from('transactions')
+        .insert(txInsertPayload);
+
+      if (txErr) throw txErr;
+
+      // Reload fresh data from Supabase
+      await loadDataFromSupabase();
+      setIsSeeding(false);
+      return { success: true, message: 'All rooms, beds, tenants, and transactions successfully seeded to Supabase!' };
+    } catch (err) {
+      console.error('Seed error:', err);
+      setIsSeeding(false);
+      return { success: false, message: err.message || 'Failed to seed data' };
+    }
+  };
+
   // Auth Operations
   const login = (username, password) => {
-    // Check credentials (stored in localStorage or default admin/admin123)
     const storedPassword = localStorage.getItem('admin_password') || 'admin123';
     if (username === adminProfile.username && password === storedPassword) {
       setIsAuthenticated(true);
@@ -402,9 +668,58 @@ export const AdminProvider = ({ children }) => {
   };
 
   // Rooms Operations
-  const addRoom = (roomData) => {
-    const newRoomId = `room-${Date.now()}`;
+  const addRoom = async (roomData) => {
     const bedCount = parseInt(roomData.numberOfBeds || 0);
+    const { type, price } = getRoomTypeAndPrice(bedCount);
+
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        const { data: newRoom, error: roomErr } = await supabase
+          .from('rooms')
+          .insert([{ room_number: roomData.number, room_type: type, price }])
+          .select()
+          .single();
+
+        if (roomErr) throw roomErr;
+
+        const bedsPayload = [];
+        for (let i = 1; i <= bedCount; i++) {
+          bedsPayload.push({
+            room_id: newRoom.id,
+            bed_number: String(i),
+            status: 'Available'
+          });
+        }
+
+        const { data: createdBeds, error: bedErr } = await supabase
+          .from('beds')
+          .insert(bedsPayload)
+          .select();
+
+        if (bedErr) throw bedErr;
+
+        const completeRoom = {
+          id: newRoom.id,
+          number: newRoom.room_number,
+          type: newRoom.room_type,
+          price: Number(newRoom.price),
+          beds: (createdBeds || []).map(b => ({
+            id: b.id,
+            number: String(b.bed_number),
+            status: b.status,
+            tenantId: null
+          }))
+        };
+
+        setRooms(prev => [...prev, completeRoom]);
+        return { success: true };
+      } catch (err) {
+        console.error('Supabase addRoom error:', err);
+      }
+    }
+
+    // Local fallback
+    const newRoomId = `room-${Date.now()}`;
     const generatedBeds = [];
     for (let i = 1; i <= bedCount; i++) {
       generatedBeds.push({
@@ -414,7 +729,6 @@ export const AdminProvider = ({ children }) => {
         tenantId: null
       });
     }
-    const { type, price } = getRoomTypeAndPrice(bedCount);
     const newRoom = {
       id: newRoomId,
       number: roomData.number,
@@ -426,16 +740,26 @@ export const AdminProvider = ({ children }) => {
     return { success: true };
   };
 
-  const editRoom = (roomId, roomData) => {
+  const editRoom = async (roomId, roomData) => {
+    const targetBedsCount = parseInt(roomData.numberOfBeds || 0);
+    const { type, price } = getRoomTypeAndPrice(targetBedsCount);
+
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        await supabase
+          .from('rooms')
+          .update({ room_number: roomData.number, room_type: type, price })
+          .eq('id', roomId);
+      } catch (err) {
+        console.error('Supabase editRoom error:', err);
+      }
+    }
+
     setRooms(prev => prev.map(room => {
       if (room.id !== roomId) return room;
-      
-      // If number of beds changed, modify the beds array
-      const targetBedsCount = parseInt(roomData.numberOfBeds || 0);
       let updatedBeds = [...room.beds];
       
       if (targetBedsCount > updatedBeds.length) {
-        // Add beds
         for (let i = updatedBeds.length + 1; i <= targetBedsCount; i++) {
           updatedBeds.push({
             id: `bed-${roomId}-${i}-${Date.now()}`,
@@ -445,17 +769,13 @@ export const AdminProvider = ({ children }) => {
           });
         }
       } else if (targetBedsCount < updatedBeds.length) {
-        // Remove extra beds if not occupied
         const occupiedCount = updatedBeds.filter(b => b.status === 'Occupied').length;
         if (occupiedCount > targetBedsCount) {
-          // Can't reduce beyond occupied count
           updatedBeds = updatedBeds.slice(0, occupiedCount);
         } else {
           updatedBeds = updatedBeds.slice(0, targetBedsCount);
         }
       }
-
-      const { type, price } = getRoomTypeAndPrice(updatedBeds.length);
 
       return {
         ...room,
@@ -468,72 +788,90 @@ export const AdminProvider = ({ children }) => {
     return { success: true };
   };
 
-  const deleteRoom = (roomId) => {
-    // Clear tenants inside this room
+  const deleteRoom = async (roomId) => {
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        await supabase.from('rooms').delete().eq('id', roomId);
+      } catch (err) {
+        console.error('Supabase deleteRoom error:', err);
+      }
+    }
+
     setTenants(prev => prev.filter(t => t.roomId !== roomId));
-    // Clear transactions associated with tenants of this room
     const roomTenantIds = tenants.filter(t => t.roomId === roomId).map(t => t.id);
     setTransactions(prev => prev.filter(tx => !roomTenantIds.includes(tx.tenantId)));
-    // Delete room
     setRooms(prev => prev.filter(r => r.id !== roomId));
     return { success: true };
   };
 
-  const addBed = (roomId) => {
-    setRooms(prev => prev.map(room => {
-      if (room.id !== roomId) return room;
-      const nextNumber = room.beds.length + 1;
-      const newBed = {
-        id: `bed-${roomId}-${nextNumber}-${Date.now()}`,
-        number: `${nextNumber}`,
-        status: 'Available',
-        tenantId: null
-      };
-      const updatedBeds = [...room.beds, newBed];
+  const addBed = async (roomId) => {
+    const room = rooms.find(r => r.id === roomId);
+    if (!room) return;
+    const nextNumber = String(room.beds.length + 1);
+
+    let createdBedId = `bed-${roomId}-${nextNumber}-${Date.now()}`;
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        const { data: newBed } = await supabase
+          .from('beds')
+          .insert([{ room_id: roomId, bed_number: nextNumber, status: 'Available' }])
+          .select()
+          .single();
+        if (newBed) createdBedId = newBed.id;
+      } catch (err) {
+        console.error('Supabase addBed error:', err);
+      }
+    }
+
+    setRooms(prev => prev.map(r => {
+      if (r.id !== roomId) return r;
+      const updatedBeds = [...r.beds, { id: createdBedId, number: nextNumber, status: 'Available', tenantId: null }];
       const { type, price } = getRoomTypeAndPrice(updatedBeds.length);
-      return {
-        ...room,
-        beds: updatedBeds,
-        type: type,
-        price: price
-      };
+      return { ...r, beds: updatedBeds, type, price };
     }));
   };
 
-  const removeBed = (roomId, bedId) => {
+  const removeBed = async (roomId, bedId) => {
     const room = rooms.find(r => r.id === roomId);
     if (!room) return { success: false, message: 'Room not found' };
     const bed = room.beds.find(b => b.id === bedId);
     if (bed && bed.status === 'Occupied') {
       return { success: false, message: 'Cannot remove an occupied bed' };
     }
+
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        await supabase.from('beds').delete().eq('id', bedId);
+      } catch (err) {
+        console.error('Supabase removeBed error:', err);
+      }
+    }
+
     setRooms(prev => prev.map(r => {
       if (r.id !== roomId) return r;
       const updatedBeds = r.beds.filter(b => b.id !== bedId);
-      // Re-number remaining beds to keep contiguous
-      const renumberedBeds = updatedBeds.map((b, idx) => ({
-        ...b,
-        number: `${idx + 1}`
-      }));
+      const renumberedBeds = updatedBeds.map((b, idx) => ({ ...b, number: `${idx + 1}` }));
       const { type, price } = getRoomTypeAndPrice(renumberedBeds.length);
-      return {
-        ...r,
-        beds: renumberedBeds,
-        type: type,
-        price: price
-      };
+      return { ...r, beds: renumberedBeds, type, price };
     }));
     return { success: true };
   };
 
-  const updateBedStatus = (roomId, bedId, status) => {
+  const updateBedStatus = async (roomId, bedId, status) => {
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        await supabase.from('beds').update({ status }).eq('id', bedId);
+      } catch (err) {
+        console.error('Supabase updateBedStatus error:', err);
+      }
+    }
+
     setRooms(prev => prev.map(room => {
       if (room.id !== roomId) return room;
       return {
         ...room,
         beds: room.beds.map(bed => {
           if (bed.id !== bedId) return bed;
-          // Clear tenantId if marked Empty or Maintenance
           const clearTenant = status !== 'Occupied';
           return {
             ...bed,
@@ -546,7 +884,6 @@ export const AdminProvider = ({ children }) => {
     return { success: true };
   };
 
-  // Helper to generate unique primary key Customer ID
   const generateNextCustomerId = () => {
     let maxNum = 1000;
     tenants.forEach(t => {
@@ -560,12 +897,87 @@ export const AdminProvider = ({ children }) => {
     return `CUST-${maxNum + 1}`;
   };
 
+  // Helper to check if string is valid UUID
+  const isUUID = (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
+  // Helper to resolve Supabase room and bed UUIDs even if caller passes mock 'room-101'
+  const resolveRoomAndBed = async (roomId, bedId, roomNumber, bedNumber) => {
+    let targetRoomId = roomId;
+    let targetBedId = bedId;
+
+    if (supabase && (!isUUID(targetRoomId) || !isUUID(targetBedId))) {
+      try {
+        const rNum = roomNumber || (typeof roomId === 'string' ? roomId.replace('room-', '') : '');
+        if (rNum) {
+          const { data: dbRoom } = await supabase.from('rooms').select('id').eq('room_number', rNum).maybeSingle();
+          if (dbRoom) {
+            targetRoomId = dbRoom.id;
+            const bNum = bedNumber ? String(bedNumber) : (typeof bedId === 'string' ? bedId.split('-').pop() : '1');
+            const { data: dbBed } = await supabase.from('beds').select('id').eq('room_id', dbRoom.id).eq('bed_number', bNum).maybeSingle();
+            if (dbBed) targetBedId = dbBed.id;
+          }
+        }
+      } catch (err) {
+        console.warn('UUID resolution fallback error:', err);
+      }
+    }
+
+    return {
+      roomId: isUUID(targetRoomId) ? targetRoomId : null,
+      bedId: isUUID(targetBedId) ? targetBedId : null
+    };
+  };
+
   // Tenants Operations
-  const addTenant = (tenantData) => {
+  const addTenant = async (tenantData) => {
     const custId = generateNextCustomerId();
-    const newTenantId = `tenant-${Date.now()}`;
+    let newTenantId = `tenant-${Date.now()}`;
     const room = rooms.find(r => r.id === tenantData.roomId);
-    
+    const roomNum = room ? room.number : tenantData.roomNumber;
+
+    if (supabase) {
+      try {
+        const { roomId: resolvedRoomId, bedId: resolvedBedId } = await resolveRoomAndBed(
+          tenantData.roomId,
+          tenantData.bedId,
+          roomNum,
+          tenantData.bedNumber
+        );
+
+        const { data: createdTenant, error: tErr } = await supabase
+          .from('tenants')
+          .insert([{
+            customer_id: custId,
+            name: tenantData.name,
+            phone: tenantData.phone,
+            aadhaar: tenantData.aadhaar,
+            room_id: resolvedRoomId,
+            bed_id: resolvedBedId,
+            joining_date: tenantData.joiningDate,
+            advance_paid: parseInt(tenantData.advancePaid || 0),
+            monthly_rent: parseInt(tenantData.monthlyRent || 0),
+            deposit: parseInt(tenantData.deposit || 0),
+            emergency_contact: tenantData.emergencyContact,
+            remarks: tenantData.remarks,
+            status: 'Active'
+          }])
+          .select()
+          .single();
+
+        if (tErr) {
+          console.error('Supabase addTenant error:', tErr);
+          alert('Could not save to Supabase: ' + tErr.message);
+        } else if (createdTenant) {
+          newTenantId = createdTenant.id;
+          if (resolvedBedId) {
+            await supabase.from('beds').update({ status: 'Occupied' }).eq('id', resolvedBedId);
+          }
+        }
+      } catch (err) {
+        console.error('Supabase addTenant exception:', err);
+      }
+    }
+
     const newTenant = {
       id: newTenantId,
       customerId: custId,
@@ -581,10 +993,10 @@ export const AdminProvider = ({ children }) => {
       monthlyRent: parseInt(tenantData.monthlyRent || 0),
       deposit: parseInt(tenantData.deposit || 0),
       emergencyContact: tenantData.emergencyContact,
-      remarks: tenantData.remarks
+      remarks: tenantData.remarks,
+      status: 'Active'
     };
 
-    // Update bed status in rooms list
     setRooms(prev => prev.map(r => {
       if (r.id !== tenantData.roomId) return r;
       return {
@@ -598,10 +1010,32 @@ export const AdminProvider = ({ children }) => {
 
     setTenants(prev => [...prev, newTenant]);
 
-    // Create current month transaction automatically
-    const currentMonthStr = new Date().toISOString().slice(0, 7); // e.g. "2026-07"
+    // Create current month transaction
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
+    let newTxId = `tx-${newTenantId}-${currentMonthStr}`;
+
+    if (supabase && isUUID(newTenantId)) {
+      try {
+        const { data: createdTx } = await supabase
+          .from('transactions')
+          .insert([{
+            tenant_id: newTenantId,
+            amount: parseInt(tenantData.monthlyRent || 0),
+            due_date: `${currentMonthStr}-05`,
+            status: 'Pending',
+            remarks: ''
+          }])
+          .select()
+          .single();
+
+        if (createdTx) newTxId = createdTx.id;
+      } catch (err) {
+        console.error('Supabase add transaction error:', err);
+      }
+    }
+
     const newTransaction = {
-      id: `tx-${newTenantId}-${currentMonthStr}`,
+      id: newTxId,
       tenantId: newTenantId,
       tenantName: tenantData.name,
       roomNumber: room ? room.number : '',
@@ -619,7 +1053,27 @@ export const AdminProvider = ({ children }) => {
     return { success: true };
   };
 
-  const editTenant = (tenantId, tenantData) => {
+  const editTenant = async (tenantId, tenantData) => {
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        await supabase
+          .from('tenants')
+          .update({
+            name: tenantData.name,
+            phone: tenantData.phone,
+            aadhaar: tenantData.aadhaar,
+            emergency_contact: tenantData.emergencyContact,
+            remarks: tenantData.remarks,
+            monthly_rent: parseInt(tenantData.monthlyRent || 0),
+            deposit: parseInt(tenantData.deposit || 0),
+            advance_paid: parseInt(tenantData.advancePaid || 0)
+          })
+          .eq('id', tenantId);
+      } catch (err) {
+        console.error('Supabase editTenant error:', err);
+      }
+    }
+
     setTenants(prev => prev.map(tenant => {
       if (tenant.id !== tenantId) return tenant;
       return {
@@ -635,7 +1089,6 @@ export const AdminProvider = ({ children }) => {
       };
     }));
 
-    // Update transactions associated with this tenant for name changes
     setTransactions(prev => prev.map(tx => {
       if (tx.tenantId !== tenantId) return tx;
       return {
@@ -648,11 +1101,21 @@ export const AdminProvider = ({ children }) => {
     return { success: true };
   };
 
-  const deleteTenant = (tenantId) => {
+  const deleteTenant = async (tenantId) => {
     const tenant = tenants.find(t => t.id === tenantId);
     if (!tenant) return { success: false, message: 'Tenant not found' };
 
-    // Set assigned bed back to Available
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        await supabase.from('tenants').delete().eq('id', tenantId);
+        if (tenant.bedId) {
+          await supabase.from('beds').update({ status: 'Available' }).eq('id', tenant.bedId);
+        }
+      } catch (err) {
+        console.error('Supabase deleteTenant error:', err);
+      }
+    }
+
     setRooms(prev => prev.map(r => {
       if (r.id !== tenant.roomId) return r;
       return {
@@ -664,7 +1127,6 @@ export const AdminProvider = ({ children }) => {
       };
     }));
 
-    // Remove transactions & tenant record
     setTransactions(prev => prev.filter(tx => tx.tenantId !== tenantId));
     setTenants(prev => prev.filter(t => t.id !== tenantId));
 
@@ -713,30 +1175,33 @@ export const AdminProvider = ({ children }) => {
     return tenant ? tenant.id : null;
   };
 
-  const moveTenant = (tenantId, newRoomId, newBedId) => {
-    console.log('moveTenant called with:', { tenantId, newRoomId, newBedId });
+  const moveTenant = async (tenantId, newRoomId, newBedId) => {
     const tenant = tenants.find(t => t.id === tenantId);
-    if (!tenant) {
-      console.error('moveTenant error: Tenant not found', tenantId);
-      return { success: false, message: 'Tenant not found' };
-    }
+    if (!tenant) return { success: false, message: 'Tenant not found' };
+    
     const oldRoomId = tenant.roomId;
     const oldBedId = tenant.bedId;
-
     const newRoom = rooms.find(r => r.id === newRoomId);
-    if (!newRoom) {
-      console.error('moveTenant error: Target room not found', newRoomId);
-      return { success: false, message: 'Target room not found' };
-    }
+    if (!newRoom) return { success: false, message: 'Target room not found' };
     const newBed = newRoom.beds.find(b => b.id === newBedId);
-    if (!newBed) {
-      console.error('moveTenant error: Target bed not found', newBedId);
-      return { success: false, message: 'Target bed not found' };
+    if (!newBed) return { success: false, message: 'Target bed not found' };
+
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        await supabase
+          .from('tenants')
+          .update({ room_id: newRoomId, bed_id: newBedId })
+          .eq('id', tenantId);
+        if (oldBedId) {
+          await supabase.from('beds').update({ status: 'Available' }).eq('id', oldBedId);
+        }
+        await supabase.from('beds').update({ status: 'Occupied' }).eq('id', newBedId);
+      } catch (err) {
+        console.error('Supabase moveTenant error:', err);
+      }
     }
 
-    // 1. Update rooms (release old bed, occupy new bed)
     setRooms(prev => prev.map(r => {
-      // If moving within the same room
       if (oldRoomId === newRoomId && r.id === oldRoomId) {
         return {
           ...r,
@@ -747,7 +1212,6 @@ export const AdminProvider = ({ children }) => {
           })
         };
       }
-      // If moving to a different room
       if (r.id === oldRoomId) {
         return {
           ...r,
@@ -763,7 +1227,6 @@ export const AdminProvider = ({ children }) => {
       return r;
     }));
 
-    // 2. Update tenant record
     setTenants(prev => prev.map(t => {
       if (t.id !== tenantId) return t;
       return {
@@ -775,7 +1238,6 @@ export const AdminProvider = ({ children }) => {
       };
     }));
 
-    // 3. Update active transactions
     setTransactions(prev => prev.map(tx => {
       if (tx.tenantId !== tenantId) return tx;
       return {
@@ -785,16 +1247,13 @@ export const AdminProvider = ({ children }) => {
       };
     }));
 
-    console.log('moveTenant successfully completed');
     return { success: true };
   };
 
-  const bulkImportTenants = (tenantsList) => {
-    console.log('bulkImportTenants called with:', tenantsList.length, 'tenants');
-    
+  const bulkImportTenants = async (tenantsList) => {
     const newTenants = [];
     const newTransactions = [];
-    const roomsToUpdate = new Map(); // Keep track of updated beds per room
+    const roomsToUpdate = new Map();
 
     tenantsList.forEach((tenantData, index) => {
       const tenantId = `tenant-bulk-${Date.now()}-${index}`;
@@ -816,8 +1275,7 @@ export const AdminProvider = ({ children }) => {
       };
       newTenants.push(newTenant);
 
-      // Create current month transaction automatically
-      const currentMonthStr = new Date().toISOString().slice(0, 7); // e.g. "2026-07"
+      const currentMonthStr = new Date().toISOString().slice(0, 7);
       const newTransaction = {
         id: `tx-${tenantId}-${currentMonthStr}`,
         tenantId: tenantId,
@@ -834,7 +1292,6 @@ export const AdminProvider = ({ children }) => {
       };
       newTransactions.push(newTransaction);
 
-      // Store bed updates
       const key = tenantData.roomId;
       if (!roomsToUpdate.has(key)) {
         roomsToUpdate.set(key, []);
@@ -842,7 +1299,6 @@ export const AdminProvider = ({ children }) => {
       roomsToUpdate.get(key).push({ bedId: tenantData.bedId, tenantId });
     });
 
-    // 1. Update rooms state
     setRooms(prev => prev.map(room => {
       if (!roomsToUpdate.has(room.id)) return room;
       const updates = roomsToUpdate.get(room.id);
@@ -858,17 +1314,31 @@ export const AdminProvider = ({ children }) => {
       };
     }));
 
-    // 2. Append tenants
     setTenants(prev => [...prev, ...newTenants]);
-
-    // 3. Append transactions
     setTransactions(prev => [...newTransactions, ...prev]);
 
     return { success: true, count: newTenants.length };
   };
 
   // Payments Operations
-  const recordPayment = (txId, paymentDetails) => {
+  const recordPayment = async (txId, paymentDetails) => {
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        await supabase
+          .from('transactions')
+          .update({
+            status: 'Paid',
+            payment_date: paymentDetails.paymentDate,
+            payment_mode: paymentDetails.paymentMode,
+            transaction_id: paymentDetails.transactionId,
+            remarks: paymentDetails.remarks
+          })
+          .eq('id', txId);
+      } catch (err) {
+        console.error('Supabase recordPayment error:', err);
+      }
+    }
+
     setTransactions(prev => prev.map(tx => {
       if (tx.id !== txId) return tx;
       return {
@@ -883,13 +1353,28 @@ export const AdminProvider = ({ children }) => {
     return { success: true };
   };
 
-  const updateRentStatus = (txId, status) => {
+  const updateRentStatus = async (txId, status) => {
+    if (supabase && cloudStatus === 'connected') {
+      try {
+        await supabase
+          .from('transactions')
+          .update({
+            status,
+            payment_date: status === 'Paid' ? undefined : null,
+            payment_mode: status === 'Paid' ? undefined : null,
+            transaction_id: status === 'Paid' ? undefined : null
+          })
+          .eq('id', txId);
+      } catch (err) {
+        console.error('Supabase updateRentStatus error:', err);
+      }
+    }
+
     setTransactions(prev => prev.map(tx => {
       if (tx.id !== txId) return tx;
       return {
         ...tx,
         status,
-        // Reset details if moving to Pending/Late
         paymentDate: status === 'Paid' ? tx.paymentDate : '',
         paymentMode: status === 'Paid' ? tx.paymentMode : '',
         transactionId: status === 'Paid' ? tx.transactionId : ''
@@ -931,6 +1416,11 @@ export const AdminProvider = ({ children }) => {
       rooms,
       tenants,
       transactions,
+      cloudStatus,
+      cloudMessage,
+      isSeeding,
+      seedDatabaseToSupabase,
+      refreshFromSupabase: loadDataFromSupabase,
       login,
       logout,
       changePassword,

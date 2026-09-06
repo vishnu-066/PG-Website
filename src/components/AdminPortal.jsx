@@ -10,7 +10,15 @@ import SettingsView from './SettingsView';
 import logo from '../logo.jpg';
 
 export default function AdminPortal({ onBackToHome }) {
-  const { isAuthenticated, adminProfile, logout } = useAdmin();
+  const { 
+    isAuthenticated, 
+    adminProfile, 
+    logout,
+    cloudStatus,
+    cloudMessage,
+    isSeeding,
+    seedDatabaseToSupabase
+  } = useAdmin();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
@@ -354,6 +362,28 @@ export default function AdminPortal({ onBackToHome }) {
           </div>
 
           <div className="header-right-controls">
+            {/* Cloud DB Status Badge */}
+            <div className={`cloud-status-badge ${cloudStatus}`} title={cloudMessage}>
+              <span className="status-dot"></span>
+              <span className="status-text">
+                {cloudStatus === 'connected' && 'Supabase Live'}
+                {cloudStatus === 'empty' && 'Supabase Empty'}
+                {cloudStatus === 'rls_restricted' && 'RLS Action Needed'}
+                {cloudStatus === 'offline' && 'Local Mode'}
+                {cloudStatus === 'initializing' && 'Connecting...'}
+              </span>
+              {cloudStatus === 'empty' && (
+                <button 
+                  className="seed-cloud-btn" 
+                  onClick={seedDatabaseToSupabase} 
+                  disabled={isSeeding}
+                  title="Upload all default PG rooms and sample data to Supabase"
+                >
+                  {isSeeding ? 'Seeding...' : 'Seed 32 Rooms'}
+                </button>
+              )}
+            </div>
+
             {/* Desktop Theme Toggle */}
             <button className="admin-header-theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
               {theme === 'light' ? (
@@ -381,6 +411,56 @@ export default function AdminPortal({ onBackToHome }) {
             </div>
           </div>
         </header>
+
+        {/* RLS Notice Banner */}
+        {cloudStatus === 'rls_restricted' && (
+          <div className="rls-notice-banner animate-fade-in" style={{
+            margin: '16px 24px',
+            padding: '14px 18px',
+            background: 'rgba(234, 88, 12, 0.1)',
+            border: '1px solid rgba(234, 88, 12, 0.3)',
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            fontSize: '13px',
+            color: 'var(--text)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '20px' }}>⚠️</span>
+              <div>
+                <strong>Supabase Connected — Row-Level Security (RLS) Action Needed:</strong>
+                <p style={{ margin: '4px 0 0', opacity: 0.9 }}>
+                  Your Supabase tables are currently blocking public access via RLS. Run this SQL in your <strong>Supabase SQL Editor</strong>:
+                  <code style={{ display: 'block', marginTop: '6px', background: 'rgba(0,0,0,0.15)', padding: '6px 10px', borderRadius: '6px', fontFamily: 'monospace' }}>
+                    alter table public.rooms disable row level security; alter table public.beds disable row level security; alter table public.tenants disable row level security; alter table public.transactions disable row level security;
+                  </code>
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => {
+                navigator.clipboard?.writeText(
+                  'alter table public.rooms disable row level security; alter table public.beds disable row level security; alter table public.tenants disable row level security; alter table public.transactions disable row level security;'
+                );
+                alert('SQL command copied to clipboard! Paste it into Supabase SQL Editor and click Run.');
+              }}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                background: 'var(--primary)',
+                color: '#fff',
+                cursor: 'pointer',
+                fontWeight: '600',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Copy SQL Fix
+            </button>
+          </div>
+        )}
 
         {/* Dynamic Inner Tab View */}
         <main className="admin-inner-view">
