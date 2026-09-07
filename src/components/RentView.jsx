@@ -20,6 +20,7 @@ export default function RentView() {
   const [personSearchTerm, setPersonSearchTerm] = useState('');
   const [personStatusFilter, setPersonStatusFilter] = useState('All');
   const [receiptTx, setReceiptTx] = useState(null); // transaction object for PDF receipt preview & export
+  const [bgReceiptTx, setBgReceiptTx] = useState(null); // background transaction object for silent PDF generation without opening modal
   const [sendingEmailId, setSendingEmailId] = useState(null); // tracking active Resend email sending state
   
   // Payment Modal controls
@@ -147,6 +148,33 @@ export default function RentView() {
     }
   };
 
+  // Format date to DD / MM / YYYY
+  const formatDisplayDate = (dStr) => {
+    if (!dStr) return '20 / 07 / 2026';
+    try {
+      const parts = dStr.split('-');
+      if (parts.length === 3) return `${parts[2]} / ${parts[1]} / ${parts[0]}`;
+      const d = new Date(dStr);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day} / ${month} / ${year}`;
+    } catch {
+      return dStr;
+    }
+  };
+
+  // Format month to MONTH YYYY
+  const formatBillingMonth = (dStr) => {
+    if (!dStr) return 'JULY 2026';
+    try {
+      const d = new Date(dStr);
+      return d.toLocaleString('en-IN', { month: 'long', year: 'numeric' }).toUpperCase();
+    } catch {
+      return 'JULY 2026';
+    }
+  };
+
   // Helper to generate & download actual vector PDF file directly
   const handleDownloadPDF = () => {
     const element = document.getElementById('receipt-printable-doc');
@@ -156,7 +184,9 @@ export default function RentView() {
     const savedScrollTop = element.scrollTop;
     element.scrollTop = 0;
 
-    const fileName = `Payment_Receipt_${receiptTx ? receiptTx.id.replace(/[^0-9]/g, '') : '202607'}_${receiptTx ? receiptTx.tenantName.replace(/\s+/g, '_') : 'Resident'}.pdf`;
+    const rawNum = receiptTx ? receiptTx.id.replace(/[^0-9]/g, '') : '000001';
+    const receiptNo = `PG-${rawNum ? rawNum.padStart(6, '0') : '000001'}`;
+    const fileName = `Payment_Receipt_${receiptNo}_${receiptTx ? receiptTx.tenantName.replace(/\s+/g, '_') : 'Resident'}.pdf`;
 
     const opt = {
       margin:       [3, 3, 3, 3],
@@ -181,15 +211,243 @@ export default function RentView() {
     });
   };
 
-  // Generate a File object from receipt-printable-doc for native Web Share API
-  const generatePDFFile = async () => {
-    const element = document.getElementById('receipt-printable-doc');
+  // Render Official Receipt Document JSX (Using the custom Blue & Navy template requested by user with PG Logo)
+  const renderReceiptDocument = (tx, targetTenant, elementId = 'receipt-printable-doc') => {
+    if (!tx) return null;
+    const currentTenant = targetTenant || tenants.find(t => t.id === tx.tenantId);
+
+    const rawNum = tx.id ? tx.id.replace(/[^0-9]/g, '') : '000001';
+    const receiptNo = `PG-${rawNum ? rawNum.padStart(6, '0') : '000001'}`;
+    const receiptDate = tx.paymentDate ? formatDisplayDate(tx.paymentDate) : '20 / 07 / 2026';
+    const billingMonth = formatBillingMonth(tx.dueDate);
+    const checkinDate = currentTenant?.joiningDate ? formatDisplayDate(currentTenant.joiningDate) : '01 / 07 / 2026';
+    const cleanWords = numberToWordsINR(tx.amount).replace(/^Rupees\s+/i, '').replace(/\s+Only$/i, '');
+
+    return (
+      <div 
+        id={elementId} 
+        className="receipt print-ready-view" 
+        style={{ 
+          maxWidth: '640px', 
+          margin: '0 auto', 
+          background: '#ffffff', 
+          borderRadius: '10px', 
+          overflow: 'hidden', 
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+          fontFamily: "'Segoe UI', Arial, sans-serif",
+          color: '#1c2333',
+          position: 'relative',
+          padding: 0
+        }}
+      >
+        <div className="top-bar" style={{ height: '6px', background: 'linear-gradient(90deg, #2b5fd9, #0f1f3d)' }}></div>
+
+        {/* Header */}
+        <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '28px 32px 20px' }}>
+          <div className="header-left" style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+            <div 
+              className="logo-box" 
+              style={{ 
+                width: '60px', 
+                height: '60px', 
+                border: '2px solid #2b5fd9', 
+                borderRadius: '8px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                flexShrink: 0,
+                overflow: 'hidden',
+                background: '#ffffff'
+              }}
+            >
+              <img 
+                src={logo} 
+                alt="Sri Venkateswara Gents PG Logo" 
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+              />
+            </div>
+            <div>
+              <p className="pg-name" style={{ fontSize: '22px', fontWeight: 800, color: '#0f1f3d', margin: '0 0 4px', letterSpacing: '0.3px', lineHeight: 1.2 }}>
+                Sri Venkateswara Gents PG
+              </p>
+              <p className="pg-sub" style={{ fontSize: '12.5px', color: '#6b7280', margin: '0 0 2px' }}>
+                Paying Guest Accommodation
+              </p>
+              <p className="pg-sub" style={{ fontSize: '12.5px', color: '#6b7280', margin: '0 0 2px' }}>
+                Kodathi Gate, behind Hanuman Archi, Bangalore, Karnataka 560035
+              </p>
+            </div>
+          </div>
+          <div className="header-right" style={{ textAlign: 'right' }}>
+            <div className="receipt-label" style={{ color: '#2b5fd9', fontWeight: 700, fontSize: '13px', letterSpacing: '0.5px' }}>
+              RENT RECEIPT
+            </div>
+            <div className="receipt-no-label" style={{ fontSize: '11px', color: '#6b7280', marginTop: '10px' }}>
+              Receipt No.
+            </div>
+            <div className="receipt-no" style={{ fontWeight: 700, color: '#0f1f3d', fontSize: '14px' }}>
+              {receiptNo}
+            </div>
+          </div>
+        </div>
+
+        {/* Meta Strip */}
+        <div className="meta-strip" style={{ display: 'flex', justifyContent: 'space-between', background: '#eef2fb', margin: '0 32px', borderRadius: '8px', padding: '14px 20px' }}>
+          <div className="meta-item" style={{ flex: 1 }}>
+            <div className="meta-label" style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>Receipt Date</div>
+            <div className="meta-value" style={{ fontSize: '13px', fontWeight: 700, color: '#0f1f3d' }}>{receiptDate}</div>
+          </div>
+          <div className="meta-item" style={{ flex: 1 }}>
+            <div className="meta-label" style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>Billing Month</div>
+            <div className="meta-value" style={{ fontSize: '13px', fontWeight: 700, color: '#0f1f3d' }}>{billingMonth}</div>
+          </div>
+          <div className="meta-item" style={{ flex: 1 }}>
+            <div className="meta-label" style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>Payment Mode</div>
+            <div className="meta-value" style={{ fontSize: '13px', fontWeight: 700, color: '#0f1f3d' }}>
+              {tx.paymentMode || 'UPI'}{tx.transactionId ? ` (${tx.transactionId})` : ''}
+            </div>
+          </div>
+        </div>
+
+        {/* Tenant Details */}
+        <div className="section" style={{ padding: '24px 32px 0' }}>
+          <div className="section-title" style={{ fontSize: '12.5px', fontWeight: 800, letterSpacing: '0.5px', color: '#0f1f3d', marginBottom: '12px' }}>
+            TENANT DETAILS
+          </div>
+          <div className="tenant-box" style={{ border: '1px solid #e2e6ee', borderRadius: '8px', padding: '18px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr', rowGap: '16px', columnGap: '24px' }}>
+            <div>
+              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Tenant Name</div>
+              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>{tx.tenantName}</div>
+            </div>
+            <div>
+              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Room / Bed No.</div>
+              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>Room {tx.roomNumber} / Bed {tx.bedNumber}</div>
+            </div>
+            <div>
+              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Phone Number</div>
+              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>{currentTenant ? currentTenant.phone : '+91 91107 52349'}</div>
+            </div>
+            <div>
+              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Check-in Date</div>
+              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>{checkinDate}</div>
+            </div>
+            <div>
+              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Rent Period</div>
+              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>{formatRentalPeriod(tx.dueDate)}</div>
+            </div>
+            <div>
+              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Aadhaar Number</div>
+              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>
+                {currentTenant?.aadhaar || (currentTenant?.customerId ? `ID: ${currentTenant.customerId}` : 'XXXX XXXX 5234')}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Summary */}
+        <div className="section" style={{ padding: '24px 32px 0' }}>
+          <div className="section-title" style={{ fontSize: '12.5px', fontWeight: 800, letterSpacing: '0.5px', color: '#0f1f3d', marginBottom: '12px' }}>
+            PAYMENT SUMMARY
+          </div>
+          <table className="payment" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '4px', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ background: '#0f1f3d', color: '#fff' }}>
+                <th style={{ textAlign: 'left', padding: '10px 16px', fontWeight: 600, fontSize: '12px', borderRadius: '4px 0 0 0' }}>Description</th>
+                <th className="amt" style={{ textAlign: 'right', padding: '10px 16px', fontWeight: 600, fontSize: '12px' }}>Amount</th>
+                <th className="status" style={{ textAlign: 'right', padding: '10px 16px', fontWeight: 600, fontSize: '12px', borderRadius: '0 4px 0 0' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tx.advanceAmount ? (
+                <tr>
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid #e2e6ee', color: '#1c2333' }}>Advance Security Deposit</td>
+                  <td className="amt" style={{ textAlign: 'right', padding: '12px 16px', borderBottom: '1px solid #e2e6ee', fontWeight: 600 }}>{formatCurrency(tx.advanceAmount)}</td>
+                  <td className="status" style={{ textAlign: 'right', padding: '12px 16px', borderBottom: '1px solid #e2e6ee' }}>
+                    <span className="status-paid" style={{ color: '#2b5fd9', fontWeight: 700, fontSize: '11.5px', letterSpacing: '0.3px' }}>PAID</span>
+                  </td>
+                </tr>
+              ) : null}
+              <tr>
+                <td style={{ padding: '12px 16px', borderBottom: '1px solid #e2e6ee', color: '#1c2333', fontWeight: 500 }}>
+                  Monthly Rent (Includes 3 Times Meals, Wi-Fi &amp; Accommodation)
+                </td>
+                <td className="amt" style={{ textAlign: 'right', padding: '12px 16px', borderBottom: '1px solid #e2e6ee', fontWeight: 600 }}>
+                  {formatCurrency(tx.amount)}
+                </td>
+                <td className="status" style={{ textAlign: 'right', padding: '12px 16px', borderBottom: '1px solid #e2e6ee' }}>
+                  <span className="status-paid" style={{ color: '#2b5fd9', fontWeight: 700, fontSize: '11.5px', letterSpacing: '0.3px' }}>PAID</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Total Amount Row */}
+        <div className="total-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eef2fb', margin: '20px 32px 0', padding: '14px 20px', borderRadius: '6px', fontWeight: 700 }}>
+          <div className="total-label" style={{ fontSize: '12.5px', color: '#0f1f3d', letterSpacing: '0.3px' }}>TOTAL AMOUNT RECEIVED</div>
+          <div className="total-amount" style={{ fontSize: '18px', color: '#0f1f3d', fontWeight: 800 }}>{formatCurrency(tx.amount)}</div>
+        </div>
+
+        {/* Amount in Words */}
+        <div className="section" style={{ padding: '24px 32px 0' }}>
+          <div className="section-title" style={{ fontSize: '12.5px', fontWeight: 800, letterSpacing: '0.5px', color: '#0f1f3d', marginBottom: '12px' }}>
+            AMOUNT IN WORDS
+          </div>
+          <div className="words-box" style={{ background: '#eef2fb', borderRadius: '6px', padding: '14px 20px', fontSize: '13px', color: '#1c2333' }}>
+            Rupees <span className="line" style={{ display: 'inline-block', borderBottom: '1px solid #aab3c5', minWidth: '260px', fontWeight: 700, color: '#0f1f3d', padding: '0 8px' }}>{cleanWords}</span> only
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div className="section" style={{ padding: '24px 32px 0' }}>
+          <div className="section-title" style={{ fontSize: '12.5px', fontWeight: 800, letterSpacing: '0.5px', color: '#0f1f3d', marginBottom: '12px' }}>
+            NOTES
+          </div>
+          <p className="notes" style={{ fontSize: '12px', color: '#6b7280', lineHeight: 1.5, margin: 0 }}>
+            This receipt acknowledges payment received for the stated rental period. Please retain this receipt for your records.
+          </p>
+          <p className="notes" style={{ fontSize: '12px', color: '#6b7280', lineHeight: 1.5, marginTop: '8px', marginBottom: 0, fontStyle: 'italic' }}>
+            This is a system-generated receipt and does not require a stamp.
+          </p>
+        </div>
+
+        {/* Signatures */}
+        <div className="signatures" style={{ display: 'flex', justifyContent: 'space-between', padding: '36px 32px 0' }}>
+          <div className="sig" style={{ width: '42%', textAlign: 'center', borderTop: '1px solid #e2e6ee', paddingTop: '8px', fontSize: '11.5px', color: '#6b7280' }}>
+            <div style={{ height: '24px' }}></div>
+            Tenant Signature
+          </div>
+          <div className="sig" style={{ width: '42%', textAlign: 'center', borderTop: '1px solid #e2e6ee', paddingTop: '8px', fontSize: '11.5px', color: '#6b7280' }}>
+            <div style={{ fontFamily: "'Brush Script MT', 'Dancing Script', cursive, sans-serif", fontSize: '18px', color: '#0f1f3d', lineHeight: '24px', fontWeight: 600 }}>
+              M. Venkatesh
+            </div>
+            Authorized Signature / Stamp
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="footer" style={{ textAlign: 'center', padding: '26px 20px 30px', fontSize: '11.5px', color: '#6b7280' }}>
+          <div className="thanks" style={{ marginBottom: '6px', color: '#1c2333', fontWeight: 600 }}>
+            Thank you for staying with us.
+          </div>
+          <div>Contact: 9441682869 &nbsp;&bull;&nbsp; Email: somulavishnu6@gmail.com</div>
+        </div>
+      </div>
+    );
+  };
+
+  // Generate a File object from a receipt element for native Web Share API
+  const generatePDFFile = async (targetElement, txObj) => {
+    const element = targetElement || document.getElementById('receipt-printable-doc');
     if (!element) return null;
 
     const savedScrollTop = element.scrollTop;
     element.scrollTop = 0;
 
-    const fileName = `Payment_Receipt_${receiptTx ? receiptTx.id.replace(/[^0-9]/g, '') : '202607'}_${receiptTx ? receiptTx.tenantName.replace(/\s+/g, '_') : 'Resident'}.pdf`;
+    const currentTx = txObj || receiptTx;
+    const rawNum = currentTx ? currentTx.id.replace(/[^0-9]/g, '') : '000001';
+    const receiptNo = `PG-${rawNum ? rawNum.padStart(6, '0') : '000001'}`;
+    const fileName = `Payment_Receipt_${receiptNo}_${currentTx ? currentTx.tenantName.replace(/\s+/g, '_') : 'Resident'}.pdf`;
 
     const opt = {
       margin:       [3, 3, 3, 3],
@@ -225,8 +483,18 @@ export default function RentView() {
     
     const text = `Hello ${tx.tenantName}! ✅\nThank you for your rent payment to Sri Venkateswara Gents PG!\n\n*Official Payment Receipt Details:*\n• Receipt #: REC-${tx.id.replace(/[^0-9]/g, '') || '202607'}\n• Tenant Name: ${tx.tenantName}\n• Room/Bed: Room ${tx.roomNumber} (Bed ${tx.bedNumber})\n• Paid Amount: ₹${tx.amount}\n• Payment Date: ${tx.paymentDate || '2026-07-20'}\n• Payment Mode: ${tx.paymentMode || 'UPI'}\n• Transaction ID: ${tx.transactionId || 'CASH'}\n• Billing Cycle: ${tx.dueDate}\n\nYour rent for ${tx.dueDate} has been successfully cleared. Have a great stay! 🏠`;
 
-    // 1. Generate PDF file in memory
-    const file = await generatePDFFile();
+    // 1. Generate PDF file in memory (using visible modal element or silent off-screen element)
+    let element = null;
+    if (receiptTx && receiptTx.id === tx.id) {
+      element = document.getElementById('receipt-printable-doc');
+    } else {
+      setBgReceiptTx(tx);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      element = document.getElementById('receipt-printable-doc-bg');
+    }
+
+    const file = await generatePDFFile(element, tx);
+    setBgReceiptTx(null);
 
     // 2. If browser supports native Web Share API with files (Mobile devices & supporting modern browsers)
     if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -251,9 +519,9 @@ export default function RentView() {
     }
   };
 
-  // Generate Base64 string from receipt-printable-doc for Resend API attachments
-  const generatePDFBase64 = async () => {
-    const element = document.getElementById('receipt-printable-doc');
+  // Generate Base64 string from receipt element for Resend API attachments
+  const generatePDFBase64 = async (targetElement) => {
+    const element = targetElement || document.getElementById('receipt-printable-doc');
     if (!element) return null;
 
     const savedScrollTop = element.scrollTop;
@@ -284,7 +552,7 @@ export default function RentView() {
     }
   };
 
-  // Direct Email Share via Resend with PDF Attachment
+  // Direct Email Share via Resend with PDF Attachment (Silent background execution, NO popup modal page)
   const shareEmailWithPDF = async (tenant, tx) => {
     if (!tx) return;
     let mailEmail = (tenant && tenant.email ? tenant.email : '').trim();
@@ -296,19 +564,28 @@ export default function RentView() {
       mailEmail = inputEmail.trim();
     }
 
-    const receiptNum = `REC-${tx.id.replace(/[^0-9]/g, '') || '101'}`;
-
-    // Ensure the printable document DOM is mounted
-    if (!receiptTx || receiptTx.id !== tx.id) {
-      setReceiptTx(tx);
-      await new Promise(resolve => setTimeout(resolve, 250));
-    }
+    const rawNum = tx.id ? tx.id.replace(/[^0-9]/g, '') : '000001';
+    const receiptNum = `PG-${rawNum ? rawNum.padStart(6, '0') : '000001'}`;
 
     setSendingEmailId(tx.id);
 
     try {
+      // If the receipt preview modal is already open for this transaction, use that DOM element.
+      // Otherwise, mount the off-screen background element so NO modal opens on screen!
+      let element = null;
+      if (receiptTx && receiptTx.id === tx.id) {
+        element = document.getElementById('receipt-printable-doc');
+      } else {
+        setBgReceiptTx(tx);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        element = document.getElementById('receipt-printable-doc-bg');
+      }
+
       // 1. Generate PDF Base64 string
-      const pdfBase64 = await generatePDFBase64();
+      const pdfBase64 = await generatePDFBase64(element);
+
+      // Clean up off-screen element
+      setBgReceiptTx(null);
 
       // 2. Call /api/send-receipt (powered by Resend)
       const res = await fetch('/api/send-receipt', {
@@ -348,8 +625,8 @@ export default function RentView() {
       }
     } catch (err) {
       console.error('Error sending receipt via Resend:', err);
-      alert(`Could not send email: ${err.message}. Triggering manual PDF download.`);
-      handleDownloadPDF();
+      alert(`Could not send email: ${err.message}.`);
+      setBgReceiptTx(null);
     } finally {
       setSendingEmailId(null);
     }
@@ -1008,6 +1285,24 @@ export default function RentView() {
         </div>
       )}
 
+      {/* Off-screen background container for silent PDF generation (Emailing / WhatsApp without opening modal) */}
+      {bgReceiptTx && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: '-9999px',
+            width: '794px',
+            background: '#ffffff',
+            zIndex: -9999,
+            pointerEvents: 'none'
+          }}
+          aria-hidden="true"
+        >
+          {renderReceiptDocument(bgReceiptTx, tenants.find(t => t.id === bgReceiptTx.tenantId), 'receipt-printable-doc-bg')}
+        </div>
+      )}
+
       {receiptTx && (
         <div className="admin-modal-overlay" style={{ overflowY: 'auto', padding: '20px 10px' }}>
           <div className="admin-modal-card animate-fade-in" style={{ maxWidth: '850px', width: '98%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '16px', border: '1px solid var(--border)' }}>
@@ -1018,7 +1313,7 @@ export default function RentView() {
                 <span style={{ fontSize: '18px' }}>📄</span>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text)' }}>Payment Receipt Preview</h3>
-                  <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>REC-{receiptTx.id.replace(/[^0-9]/g, '') || '202607-101'} &bull; {receiptTx.tenantName}</p>
+                  <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>PG-{(receiptTx.id.replace(/[^0-9]/g, '') || '000001').padStart(6, '0')} &bull; {receiptTx.tenantName}</p>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -1056,163 +1351,8 @@ export default function RentView() {
               </div>
             </div>
 
-            {/* Printable PDF Document Container (Clean & Simple Layout) */}
-            <div id="receipt-printable-doc" className="print-ready-view" style={{ padding: '32px 36px', background: '#ffffff', color: '#0f172a', fontFamily: "'Inter', 'Poppins', system-ui, sans-serif", position: 'relative', overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch' }}>
-              
-              {/* 1. Header Section with Logo */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: '16px', borderBottom: '2px solid #E2E8F0', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <img 
-                    src={logo} 
-                    alt="Sri Venkateswara Gents PG Logo" 
-                    style={{ 
-                      width: '64px', 
-                      height: '64px', 
-                      borderRadius: '10px', 
-                      objectFit: 'cover', 
-                      objectPosition: '50% 22%', 
-                      border: '1px solid #E2E8F0', 
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.06)' 
-                    }} 
-                  />
-                  <div>
-                    <h2 style={{ fontSize: '20px', fontWeight: '800', margin: 0, color: '#0F172A', letterSpacing: '-0.3px' }}>SRI VENKATESWARA GENTS PG</h2>
-                    <p style={{ fontSize: '11.5px', color: '#64748B', margin: '3px 0 0', lineHeight: '1.4' }}>
-                      Kodathi Gate, Behind Hanuman Arch, Sarjapur Road, Bengaluru 560035<br />
-                      Phone: +91 91107 52349 &bull; Email: contact@svpg.in
-                    </p>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <h1 style={{ fontSize: '18px', fontWeight: '900', color: '#2563EB', margin: 0, letterSpacing: '0.5px' }}>RENT RECEIPT</h1>
-                  <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px', fontWeight: '600' }}>
-                    Receipt #: <strong style={{ color: '#0F172A' }}>REC-{receiptTx.id.replace(/[^0-9]/g, '') || '101'}</strong>
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
-                    Date: <strong>{receiptTx.paymentDate || '2026-07-20'}</strong>
-                  </div>
-                  <div style={{ marginTop: '6px' }}>
-                    <span style={{ display: 'inline-block', background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC', padding: '3px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.4px' }}>
-                      ✓ PAID
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 2. Simple Details Grid (Tenant & Payment Info) */}
-              {(() => {
-                const tenant = tenants.find(t => t.id === receiptTx.tenantId);
-
-                return (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-                    {/* Tenant Box */}
-                    <div style={{ background: '#F8FAFC', padding: '14px 16px', borderRadius: '10px', border: '1px solid #E2E8F0', fontSize: '12.5px' }}>
-                      <div style={{ fontSize: '11px', color: '#2563EB', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
-                        Tenant Details
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div>
-                          <span style={{ color: '#64748B' }}>Name: </span>
-                          <strong style={{ color: '#0F172A', fontSize: '13.5px' }}>{receiptTx.tenantName}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: '#64748B' }}>Room / Bed: </span>
-                          <strong style={{ color: '#0F172A' }}>Room {receiptTx.roomNumber} &bull; Bed {receiptTx.bedNumber}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: '#64748B' }}>Contact Phone: </span>
-                          <span style={{ color: '#334155' }}>{tenant ? tenant.phone : '+91 91107 52349'}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Payment Info Box */}
-                    <div style={{ background: '#F8FAFC', padding: '14px 16px', borderRadius: '10px', border: '1px solid #E2E8F0', fontSize: '12.5px' }}>
-                      <div style={{ fontSize: '11px', color: '#059669', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
-                        Payment Details
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div>
-                          <span style={{ color: '#64748B' }}>Rental Period: </span>
-                          <strong style={{ color: '#0F172A' }}>{formatRentalPeriod(receiptTx.dueDate)}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: '#64748B' }}>Payment Mode: </span>
-                          <strong style={{ color: '#0F172A' }}>{receiptTx.paymentMode || 'UPI'}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: '#64748B' }}>Transaction ID: </span>
-                          <span style={{ fontFamily: 'monospace', color: '#334155' }}>{receiptTx.transactionId || 'CASH-SETTLED'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* 3. Simple Itemized Rent Table */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '18px', fontSize: '12.5px' }}>
-                <thead>
-                  <tr style={{ background: '#F1F5F9', borderBottom: '2px solid #CBD5E1', textAlign: 'left', color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                    <th style={{ padding: '10px 14px', borderRadius: '6px 0 0 0' }}>Description</th>
-                    <th style={{ padding: '10px 14px', textAlign: 'center', width: '120px' }}>Period</th>
-                    <th style={{ padding: '10px 14px', textAlign: 'right', borderRadius: '0 6px 0 0', width: '140px' }}>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
-                    <td style={{ padding: '12px 14px', fontWeight: '600', color: '#0F172A' }}>
-                      Monthly PG Rent &amp; Homestyle Food
-                      <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 'normal', marginTop: '2px' }}>
-                        Includes 3 Times Meals, Wi-Fi &amp; Accommodation
-                      </div>
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'center', color: '#475569' }}>
-                      1 Month
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '700', color: '#0F172A' }}>
-                      {formatCurrency(receiptTx.amount)}
-                    </td>
-                  </tr>
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: '#F8FAFC' }}>
-                    <td colSpan="2" style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '700', fontSize: '13px', color: '#0F172A' }}>
-                      Total Amount Paid:
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '900', fontSize: '16px', color: '#059669' }}>
-                      {formatCurrency(receiptTx.amount)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-
-              {/* 4. Amount in Words */}
-              <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '8px', padding: '10px 14px', marginBottom: '24px', fontSize: '12px', color: '#166534' }}>
-                <span style={{ fontWeight: '700', color: '#15803D' }}>Amount in Words: </span>
-                <strong style={{ color: '#0F172A' }}>{numberToWordsINR(receiptTx.amount)}</strong>
-              </div>
-
-              {/* 5. Footer & Simple Sign-off */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '16px', borderTop: '1px solid #E2E8F0', flexWrap: 'wrap', gap: '14px' }}>
-                <div style={{ fontSize: '11.5px', color: '#64748B' }}>
-                  <div style={{ fontWeight: '600', color: '#0F172A', marginBottom: '2px' }}>Thank you for staying with us!</div>
-                  <div>Sri Venkateswara Gents PG &bull; Phone: +91 91107 52349</div>
-                  <div style={{ fontSize: '10.5px', color: '#94A3B8', marginTop: '2px' }}>Computer-generated official receipt.</div>
-                </div>
-
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: "'Brush Script MT', 'Dancing Script', cursive, sans-serif", fontSize: '22px', color: '#1E3A8A', marginBottom: '2px' }}>
-                    M. Venkatesh
-                  </div>
-                  <div style={{ borderTop: '1px solid #94A3B8', paddingTop: '4px', minWidth: '160px', display: 'inline-block' }}>
-                    <strong style={{ fontSize: '12px', color: '#0F172A', display: 'block' }}>Authorized Signatory</strong>
-                    <span style={{ fontSize: '10.5px', color: '#64748B' }}>Sri Venkateswara Gents PG</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
+            {/* Printable PDF Document Container */}
+            {renderReceiptDocument(receiptTx, tenants.find(t => t.id === receiptTx.tenantId), 'receipt-printable-doc')}
 
             {/* Bottom Actions Bar (No-Print) */}
             <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', background: 'var(--surface)', borderTop: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap', gap: '10px' }}>

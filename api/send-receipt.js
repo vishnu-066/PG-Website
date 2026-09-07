@@ -49,7 +49,7 @@ export default async function handler(req, res) {
     const fromAddress = process.env.RESEND_FROM_EMAIL || 'Sri Venkateswara PG <onboarding@resend.dev>';
 
     const formattedAmount = Number(amount || 0).toLocaleString('en-IN');
-    const safeReceiptNum = receiptNumber || 'REC-101';
+    const safeReceiptNum = receiptNumber || 'PG-000001';
     const cleanFileName = `Payment_Receipt_${safeReceiptNum.replace(/[^0-9a-zA-Z]/g, '')}_${(tenantName || 'Resident').replace(/\s+/g, '_')}.pdf`;
 
     const htmlContent = `
@@ -106,8 +106,8 @@ export default async function handler(req, res) {
           </div>
           <div class="footer">
             <strong>Sri Venkateswara Gents PG</strong><br />
-            Behind Hanuman Arch, Sarjapur Road, Bengaluru, Karnataka 560035<br />
-            Phone: +91 91107 52349 &bull; Email: contact@svpg.in
+            Kodathi Gate, behind Hanuman Archi, Bangalore, Karnataka 560035<br />
+            Contact: 9441682869 &bull; Email: somulavishnu6@gmail.com
           </div>
         </div>
       </body>
