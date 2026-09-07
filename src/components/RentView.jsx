@@ -20,6 +20,7 @@ export default function RentView() {
   const [personSearchTerm, setPersonSearchTerm] = useState('');
   const [personStatusFilter, setPersonStatusFilter] = useState('All');
   const [receiptTx, setReceiptTx] = useState(null); // transaction object for PDF receipt preview & export
+  const [sendingEmailId, setSendingEmailId] = useState(null); // tracking active Resend email sending state
   
   // Payment Modal controls
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -113,6 +114,37 @@ export default function RentView() {
       currency: 'INR',
       maximumFractionDigits: 0
     }).format(val);
+  };
+
+  // Convert numbers to Words in Indian Rupees
+  const numberToWordsINR = (num) => {
+    if (!num || isNaN(num)) return 'Rupees Zero Only';
+    const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const inWords = (n) => {
+      if (n < 20) return a[n];
+      if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? ' ' + a[n % 10] : '');
+      if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' and ' + inWords(n % 100) : '');
+      if (n < 100000) return inWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + inWords(n % 1000) : '');
+      if (n < 10000000) return inWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + inWords(n % 100000) : '');
+      return inWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + inWords(n % 10000000) : '');
+    };
+    return 'Rupees ' + inWords(Math.floor(num)) + ' Only';
+  };
+
+  // Calculate rental period range (e.g. 01 Jul 2026 to 31 Jul 2026)
+  const formatRentalPeriod = (dateStr) => {
+    if (!dateStr) return 'Current Month';
+    try {
+      const d = new Date(dateStr);
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      const monthName = d.toLocaleString('en-IN', { month: 'short' });
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      return `01 ${monthName} ${year} to ${lastDay} ${monthName} ${year}`;
+    } catch (e) {
+      return dateStr;
+    }
   };
 
   // Helper to generate & download actual vector PDF file directly
@@ -219,34 +251,108 @@ export default function RentView() {
     }
   };
 
-  // Direct Email Share to Tenant Email Address with in-memory PDF attachment (No auto-download onto disk)
+  // Generate Base64 string from receipt-printable-doc for Resend API attachments
+  const generatePDFBase64 = async () => {
+    const element = document.getElementById('receipt-printable-doc');
+    if (!element) return null;
+
+    const savedScrollTop = element.scrollTop;
+    element.scrollTop = 0;
+
+    const opt = {
+      margin:       [3, 3, 3, 3],
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { 
+        scale: 2, 
+        useCORS: true, 
+        letterRendering: true,
+        backgroundColor: '#ffffff',
+        scrollY: 0,
+        scrollX: 0
+      },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak:    { mode: 'avoid-all' }
+    };
+
+    try {
+      const dataUri = await html2pdf().set(opt).from(element).outputPdf('datauristring');
+      element.scrollTop = savedScrollTop;
+      return dataUri;
+    } catch (err) {
+      element.scrollTop = savedScrollTop;
+      return null;
+    }
+  };
+
+  // Direct Email Share via Resend with PDF Attachment
   const shareEmailWithPDF = async (tenant, tx) => {
     if (!tx) return;
-    const mailEmail = tenant && tenant.email ? tenant.email : '';
-    const subject = `Official Payment Receipt REC-${tx.id.replace(/[^0-9]/g, '') || '202607'} - Sri Venkateswara Gents PG`;
-    const bodyText = `Dear ${tx.tenantName},\n\nThank you for your rent payment to Sri Venkateswara Gents PG.\n\nPayment Receipt Details:\n• Receipt #: REC-${tx.id.replace(/[^0-9]/g, '') || '202607'}\n• Tenant Name: ${tx.tenantName}\n• Room/Bed: Room ${tx.roomNumber} - Bed ${tx.bedNumber}\n• Paid Amount: ₹${tx.amount}\n• Date: ${tx.paymentDate || '2026-07-20'}\n• Payment Mode: ${tx.paymentMode || 'UPI'}\n• Transaction ID: ${tx.transactionId || 'CASH'}\n• Billing Period: ${tx.dueDate}\n\nThank you for choosing Sri Venkateswara Gents PG!\n\nBest Regards,\nManagement, Sri Venkateswara Gents PG`;
-
-    // 1. Generate PDF file in memory
-    const file = await generatePDFFile();
-
-    // 2. If browser supports native Web Share API with files
-    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: subject,
-          text: bodyText
-        });
-        return;
-      } catch (e) {
-        // User cancelled share
-      }
+    let mailEmail = (tenant && tenant.email ? tenant.email : '').trim();
+    if (!mailEmail) {
+      const inputEmail = window.prompt(
+        `No email address is registered for ${tx.tenantName}.\n\nPlease enter the customer's email address to send the receipt:`
+      );
+      if (!inputEmail || !inputEmail.trim()) return;
+      mailEmail = inputEmail.trim();
     }
 
-    // 3. Fallback: Launch mail app directly to that specific tenant email address
-    const mailSubject = encodeURIComponent(subject);
-    const mailBody = encodeURIComponent(bodyText);
-    window.location.href = `mailto:${mailEmail}?subject=${mailSubject}&body=${mailBody}`;
+    const receiptNum = `REC-${tx.id.replace(/[^0-9]/g, '') || '101'}`;
+
+    // Ensure the printable document DOM is mounted
+    if (!receiptTx || receiptTx.id !== tx.id) {
+      setReceiptTx(tx);
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+
+    setSendingEmailId(tx.id);
+
+    try {
+      // 1. Generate PDF Base64 string
+      const pdfBase64 = await generatePDFBase64();
+
+      // 2. Call /api/send-receipt (powered by Resend)
+      const res = await fetch('/api/send-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: mailEmail,
+          tenantName: tx.tenantName,
+          receiptNumber: receiptNum,
+          amount: tx.amount,
+          paymentDate: tx.paymentDate || new Date().toISOString().split('T')[0],
+          dueDate: tx.dueDate,
+          roomNumber: tx.roomNumber,
+          bedNumber: tx.bedNumber,
+          paymentMode: tx.paymentMode || 'UPI',
+          transactionId: tx.transactionId || 'CASH',
+          pdfBase64
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        alert(`✅ Receipt with PDF attachment has been sent to ${mailEmail} via Resend!`);
+      } else {
+        // If Resend API key is not configured or failed, offer helpful guidance and Gmail draft fallback
+        const useFallback = window.confirm(
+          `Resend Notice: ${data.message}\n\nWould you like to auto-download the PDF and open a draft in Gmail instead?`
+        );
+        if (useFallback) {
+          handleDownloadPDF();
+          const subject = `Official Payment Receipt ${receiptNum} - Sri Venkateswara Gents PG`;
+          const bodyText = `Dear ${tx.tenantName},\n\nThank you for your rent payment to Sri Venkateswara Gents PG!\n\nOfficial Payment Receipt Details:\n• Receipt #: ${receiptNum}\n• Room/Bed: Room ${tx.roomNumber} - Bed ${tx.bedNumber}\n• Amount: ₹${tx.amount.toLocaleString('en-IN')}\n• Payment Date: ${tx.paymentDate || '2026-07-20'}\n\nBest Regards,\nSri Venkateswara Gents PG`;
+          const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(mailEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+          window.open(gmailUrl, '_blank');
+        }
+      }
+    } catch (err) {
+      console.error('Error sending receipt via Resend:', err);
+      alert(`Could not send email: ${err.message}. Triggering manual PDF download.`);
+      handleDownloadPDF();
+    } finally {
+      setSendingEmailId(null);
+    }
   };
 
   // 2. Filter transactions list (supports Customer ID search)
@@ -571,6 +677,14 @@ export default function RentView() {
                                 >
                                   📲 WhatsApp
                                 </button>
+                                <button
+                                  className="secondary table-action-btn"
+                                  onClick={() => shareEmailWithPDF(tenant, currentTx)}
+                                  title={`Email Rent Receipt to ${tenant.email || 'customer'}`}
+                                  style={{ fontSize: '11px', padding: '6px 10px', background: 'rgba(37, 99, 235, 0.1)', color: '#2563EB', border: '1px solid rgba(37, 99, 235, 0.2)' }}
+                                >
+                                  ✉️ Email
+                                </button>
                               </>
                             )}
                           </div>
@@ -680,6 +794,18 @@ export default function RentView() {
                       <div className="rent-actions-group" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                         <button className="secondary table-action-btn" onClick={() => setReceiptTx(tx)} title="View & Export PDF Receipt" style={{ fontSize: '11px', padding: '4px 8px', background: 'rgba(var(--primary-rgb), 0.08)', color: 'var(--primary)', border: '1px solid rgba(var(--primary-rgb), 0.15)' }}>
                           📄 PDF
+                        </button>
+                        <button 
+                          className="secondary table-action-btn" 
+                          disabled={sendingEmailId === tx.id}
+                          onClick={() => {
+                            const tenant = tenants.find(t => t.id === tx.tenantId);
+                            shareEmailWithPDF(tenant, tx);
+                          }} 
+                          title="Send Receipt via Email" 
+                          style={{ fontSize: '11px', padding: '4px 8px', background: 'rgba(37, 99, 235, 0.08)', color: '#2563EB', border: '1px solid rgba(37, 99, 235, 0.15)', opacity: sendingEmailId === tx.id ? 0.6 : 1, cursor: sendingEmailId === tx.id ? 'wait' : 'pointer' }}
+                        >
+                          {sendingEmailId === tx.id ? '⏳ Sending...' : '✉️ Email'}
                         </button>
                         <button className="icon-btn-edit" onClick={() => openRecordPayment(tx)} title="Edit Details">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none">
@@ -861,6 +987,9 @@ export default function RentView() {
                               <button className="secondary" style={{ padding: '4px 8px', fontSize: '11px', color: '#27ae60', background: 'rgba(37, 211, 102, 0.1)', border: '1px solid rgba(37, 211, 102, 0.2)' }} onClick={() => sendWhatsAppReceipt(selectedPerson, tx)} title="Share Receipt on WhatsApp">
                                 📲
                               </button>
+                              <button className="secondary" style={{ padding: '4px 8px', fontSize: '11px', color: '#2563EB', background: 'rgba(37, 99, 235, 0.1)', border: '1px solid rgba(37, 99, 235, 0.2)' }} onClick={() => shareEmailWithPDF(selectedPerson, tx)} title="Share Receipt on Email">
+                                ✉️
+                              </button>
                             </div>
                           )}
                         </div>
@@ -912,8 +1041,14 @@ export default function RentView() {
                 {(() => {
                   const tenant = tenants.find(t => t.id === receiptTx.tenantId);
                   return (
-                    <button className="secondary" onClick={() => shareEmailWithPDF(tenant, receiptTx)} style={{ fontSize: '13px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(37, 99, 235, 0.08)', color: '#2563EB', border: '1px solid rgba(37, 99, 235, 0.2)', borderRadius: '10px', fontWeight: '600' }} title="Share Receipt & PDF via Email">
-                      ✉️ Email Receipt + PDF
+                    <button 
+                      className="secondary" 
+                      onClick={() => shareEmailWithPDF(tenant, receiptTx)} 
+                      disabled={sendingEmailId === receiptTx.id}
+                      style={{ fontSize: '13px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(37, 99, 235, 0.08)', color: '#2563EB', border: '1px solid rgba(37, 99, 235, 0.2)', borderRadius: '10px', fontWeight: '600', opacity: sendingEmailId === receiptTx.id ? 0.7 : 1, cursor: sendingEmailId === receiptTx.id ? 'wait' : 'pointer' }} 
+                      title={tenant?.email ? `Email receipt directly to ${tenant.email}` : 'Enter email to send receipt'}
+                    >
+                      {sendingEmailId === receiptTx.id ? '⏳ Sending PDF via Resend...' : `✉️ Email Receipt ${tenant?.email ? `(${tenant.email})` : ''}`}
                     </button>
                   );
                 })()}
@@ -921,228 +1056,162 @@ export default function RentView() {
               </div>
             </div>
 
-            {/* Printable PDF Document Container (A4 Centered Layout with 5-8% Watermark) */}
-            <div id="receipt-printable-doc" className="print-ready-view" style={{ padding: '24px 28px', background: '#ffffff', color: '#0f172a', fontFamily: "'Inter', 'Poppins', system-ui, sans-serif", position: 'relative', overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch' }}>
+            {/* Printable PDF Document Container (Clean & Simple Layout) */}
+            <div id="receipt-printable-doc" className="print-ready-view" style={{ padding: '32px 36px', background: '#ffffff', color: '#0f172a', fontFamily: "'Inter', 'Poppins', system-ui, sans-serif", position: 'relative', overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch' }}>
               
-              {/* Centered Semi-Transparent Logo Watermark (5-8% opacity behind all content) */}
-              <div 
-                aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  width: '280px',
-                  height: '280px',
-                  opacity: '0.07',
-                  pointerEvents: 'none',
-                  zIndex: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <img 
-                  src={logo} 
-                  alt="Watermark Logo" 
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'contain',
-                    filter: 'grayscale(20%)'
-                  }} 
-                />
-              </div>
-
-              {/* Document Content Layer */}
-              <div style={{ position: 'relative', zIndex: 1 }}>
-                
-                {/* 1. Header Section */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: '16px', borderBottom: '2px solid #E2E8F0', marginBottom: '16px', flexWrap: 'wrap', gap: '14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <img src={logo} alt="Sri Venkateswara Gents PG Logo" style={{ width: '50px', height: '50px', borderRadius: '10px', objectFit: 'cover', border: '1px solid #E2E8F0', boxShadow: '0 2px 6px rgba(0,0,0,0.06)' }} />
-                    <div>
-                      <h2 style={{ fontSize: '19px', fontWeight: '800', margin: 0, color: '#0F172A', letterSpacing: '-0.3px' }}>SRI VENKATESWARA GENTS PG</h2>
-                      <p style={{ fontSize: '11.5px', color: '#64748B', margin: '2px 0 0', lineHeight: '1.35' }}>
-                        #124, 15th Main Rd, HSR Layout, Sector 2, Bengaluru, Karnataka 560102<br />
-                        Email: contact@svgentspg.com &bull; Phone: +91 98765 43210 &bull; GSTIN: 29ABCDE1234F1Z5
-                      </p>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <h1 style={{ fontSize: '18px', fontWeight: '900', color: '#2563EB', margin: 0, letterSpacing: '0.5px' }}>PAYMENT RECEIPT</h1>
-                    <div style={{ fontSize: '11.5px', color: '#475569', marginTop: '4px', fontWeight: '600' }}>
-                      Receipt #: <strong style={{ color: '#0F172A' }}>REC-{receiptTx.id.replace(/[^0-9]/g, '') || '202607-101'}</strong>
-                    </div>
-                    <div style={{ fontSize: '11.5px', color: '#475569', marginTop: '2px' }}>
-                      Date: <strong>{receiptTx.paymentDate || '2026-07-20'}</strong>
-                    </div>
-                    <div style={{ marginTop: '6px' }}>
-                      {receiptTx.status === 'Paid' ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#DCFCE7', color: '#059669', border: '1px solid #A7F3D0', padding: '4px 12px', borderRadius: '16px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.4px' }}>
-                          ● PAID & CLEARED
-                        </span>
-                      ) : receiptTx.status === 'Late' ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#FEE2E2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '4px 12px', borderRadius: '16px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.4px' }}>
-                          ● OVERDUE / LATE
-                        </span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', padding: '4px 12px', borderRadius: '16px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.4px' }}>
-                          ● PENDING
-                        </span>
-                      )}
-                    </div>
+              {/* 1. Header Section with Logo */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: '16px', borderBottom: '2px solid #E2E8F0', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <img 
+                    src={logo} 
+                    alt="Sri Venkateswara Gents PG Logo" 
+                    style={{ 
+                      width: '64px', 
+                      height: '64px', 
+                      borderRadius: '10px', 
+                      objectFit: 'cover', 
+                      objectPosition: '50% 22%', 
+                      border: '1px solid #E2E8F0', 
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.06)' 
+                    }} 
+                  />
+                  <div>
+                    <h2 style={{ fontSize: '20px', fontWeight: '800', margin: 0, color: '#0F172A', letterSpacing: '-0.3px' }}>SRI VENKATESWARA GENTS PG</h2>
+                    <p style={{ fontSize: '11.5px', color: '#64748B', margin: '3px 0 0', lineHeight: '1.4' }}>
+                      Kodathi Gate, Behind Hanuman Arch, Sarjapur Road, Bengaluru 560035<br />
+                      Phone: +91 91107 52349 &bull; Email: contact@svpg.in
+                    </p>
                   </div>
                 </div>
+                <div style={{ textAlign: 'right' }}>
+                  <h1 style={{ fontSize: '18px', fontWeight: '900', color: '#2563EB', margin: 0, letterSpacing: '0.5px' }}>RENT RECEIPT</h1>
+                  <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px', fontWeight: '600' }}>
+                    Receipt #: <strong style={{ color: '#0F172A' }}>REC-{receiptTx.id.replace(/[^0-9]/g, '') || '101'}</strong>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
+                    Date: <strong>{receiptTx.paymentDate || '2026-07-20'}</strong>
+                  </div>
+                  <div style={{ marginTop: '6px' }}>
+                    <span style={{ display: 'inline-block', background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC', padding: '3px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.4px' }}>
+                      ✓ PAID
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-                {/* 2. Customer Information Card */}
-                {(() => {
-                  const tenant = tenants.find(t => t.id === receiptTx.tenantId);
-                  return (
-                    <div style={{ background: '#F8FAFC', padding: '14px 18px', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '16px' }}>
-                      <div style={{ fontSize: '10.5px', color: '#2563EB', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '6px' }}>
-                        Customer / Resident Information
+              {/* 2. Simple Details Grid (Tenant & Payment Info) */}
+              {(() => {
+                const tenant = tenants.find(t => t.id === receiptTx.tenantId);
+
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                    {/* Tenant Box */}
+                    <div style={{ background: '#F8FAFC', padding: '14px 16px', borderRadius: '10px', border: '1px solid #E2E8F0', fontSize: '12.5px' }}>
+                      <div style={{ fontSize: '11px', color: '#2563EB', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                        Tenant Details
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', fontSize: '12.5px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <div>
-                          <span style={{ fontSize: '10.5px', color: '#64748B', display: 'block' }}>Customer Name</span>
-                          <strong style={{ fontSize: '14px', color: '#0F172A' }}>{receiptTx.tenantName}</strong>
+                          <span style={{ color: '#64748B' }}>Name: </span>
+                          <strong style={{ color: '#0F172A', fontSize: '13.5px' }}>{receiptTx.tenantName}</strong>
                         </div>
                         <div>
-                          <span style={{ fontSize: '10.5px', color: '#64748B', display: 'block' }}>Customer ID</span>
-                          <strong style={{ color: '#334155' }}>CUST-{tenant ? tenant.id.slice(-4) : '101'}</strong>
+                          <span style={{ color: '#64748B' }}>Room / Bed: </span>
+                          <strong style={{ color: '#0F172A' }}>Room {receiptTx.roomNumber} &bull; Bed {receiptTx.bedNumber}</strong>
                         </div>
                         <div>
-                          <span style={{ fontSize: '10.5px', color: '#64748B', display: 'block' }}>Phone Number</span>
-                          <strong style={{ color: '#334155' }}>{tenant ? tenant.phone : '+91 98765 43210'}</strong>
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '10.5px', color: '#64748B', display: 'block' }}>Email Address</span>
-                          <strong style={{ color: '#334155' }}>{tenant && tenant.email ? tenant.email : 'resident@svgentspg.com'}</strong>
-                        </div>
-                        <div style={{ gridColumn: '1 / -1' }}>
-                          <span style={{ fontSize: '10.5px', color: '#64748B', display: 'block' }}>Billing Address & Room Allocation</span>
-                          <strong style={{ color: '#334155' }}>Room {receiptTx.roomNumber} &bull; Bed {receiptTx.bedNumber}, Sri Venkateswara Gents PG, HSR Layout, Sector 2, Bengaluru - 560102</strong>
+                          <span style={{ color: '#64748B' }}>Contact Phone: </span>
+                          <span style={{ color: '#334155' }}>{tenant ? tenant.phone : '+91 91107 52349'}</span>
                         </div>
                       </div>
                     </div>
-                  );
-                })()}
 
-                {/* 3. Payment Details Grid (2 Columns) */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', background: '#FFFFFF', padding: '12px 16px', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '16px', fontSize: '12.5px' }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed #E2E8F0' }}>
-                      <span style={{ color: '#64748B' }}>Transaction ID:</span>
-                      <strong style={{ color: '#0F172A' }}>{receiptTx.transactionId || 'TXN9876543210'}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed #E2E8F0' }}>
-                      <span style={{ color: '#64748B' }}>Invoice Number:</span>
-                      <strong style={{ color: '#0F172A' }}>INV-{receiptTx.dueDate.replace('-', '')}-{receiptTx.roomNumber}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                      <span style={{ color: '#64748B' }}>Currency:</span>
-                      <strong style={{ color: '#0F172A' }}>INR (₹)</strong>
+                    {/* Payment Info Box */}
+                    <div style={{ background: '#F8FAFC', padding: '14px 16px', borderRadius: '10px', border: '1px solid #E2E8F0', fontSize: '12.5px' }}>
+                      <div style={{ fontSize: '11px', color: '#059669', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                        Payment Details
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div>
+                          <span style={{ color: '#64748B' }}>Rental Period: </span>
+                          <strong style={{ color: '#0F172A' }}>{formatRentalPeriod(receiptTx.dueDate)}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748B' }}>Payment Mode: </span>
+                          <strong style={{ color: '#0F172A' }}>{receiptTx.paymentMode || 'UPI'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748B' }}>Transaction ID: </span>
+                          <span style={{ fontFamily: 'monospace', color: '#334155' }}>{receiptTx.transactionId || 'CASH-SETTLED'}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed #E2E8F0' }}>
-                      <span style={{ color: '#64748B' }}>Payment Method:</span>
-                      <strong style={{ color: '#0F172A' }}>{receiptTx.paymentMode || 'UPI (GPay/PhonePe)'}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed #E2E8F0' }}>
-                      <span style={{ color: '#64748B' }}>Payment Date:</span>
-                      <strong style={{ color: '#0F172A' }}>{receiptTx.paymentDate || '2026-07-20'}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                      <span style={{ color: '#64748B' }}>Reference Number:</span>
-                      <strong style={{ color: '#0F172A' }}>REF-{receiptTx.id.toUpperCase()}</strong>
-                    </div>
-                  </div>
-                </div>
+                );
+              })()}
 
-                {/* 4. Amount Summary Table */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px', fontSize: '12.5px' }}>
-                  <thead>
-                    <tr style={{ background: '#F1F5F9', textTransform: 'uppercase', fontSize: '10.5px', color: '#475569', textAlign: 'left', letterSpacing: '0.4px' }}>
-                      <th style={{ padding: '8px 12px', borderBottom: '2px solid #CBD5E1', borderRadius: '6px 0 0 0' }}>Description</th>
-                      <th style={{ padding: '8px 12px', borderBottom: '2px solid #CBD5E1', textAlign: 'center' }}>Qty</th>
-                      <th style={{ padding: '8px 12px', borderBottom: '2px solid #CBD5E1', textAlign: 'right' }}>Unit Price</th>
-                      <th style={{ padding: '8px 12px', borderBottom: '2px solid #CBD5E1', textAlign: 'right' }}>Tax (GST)</th>
-                      <th style={{ padding: '8px 12px', borderBottom: '2px solid #CBD5E1', textAlign: 'right' }}>Discount</th>
-                      <th style={{ padding: '8px 12px', borderBottom: '2px solid #CBD5E1', textAlign: 'right', borderRadius: '0 6px 0 0' }}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #E2E8F0', fontWeight: '600', color: '#0F172A' }}>
-                        Monthly Accommodation, Food & Facility Maintenance ({receiptTx.dueDate})
-                      </td>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #E2E8F0', textAlign: 'center', color: '#475569' }}>1 Month</td>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #E2E8F0', textAlign: 'right', color: '#475569' }}>{formatCurrency(receiptTx.amount)}</td>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #E2E8F0', textAlign: 'right', color: '#475569' }}>₹0.00 (0%)</td>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #E2E8F0', textAlign: 'right', color: '#475569' }}>₹0.00</td>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #E2E8F0', textAlign: 'right', fontWeight: '700', color: '#0F172A' }}>{formatCurrency(receiptTx.amount)}</td>
-                    </tr>
-                  </tbody>
-                </table>
+              {/* 3. Simple Itemized Rent Table */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '18px', fontSize: '12.5px' }}>
+                <thead>
+                  <tr style={{ background: '#F1F5F9', borderBottom: '2px solid #CBD5E1', textAlign: 'left', color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    <th style={{ padding: '10px 14px', borderRadius: '6px 0 0 0' }}>Description</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'center', width: '120px' }}>Period</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'right', borderRadius: '0 6px 0 0', width: '140px' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
+                    <td style={{ padding: '12px 14px', fontWeight: '600', color: '#0F172A' }}>
+                      Monthly PG Rent &amp; Homestyle Food
+                      <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 'normal', marginTop: '2px' }}>
+                        Includes 3 Times Meals, Wi-Fi &amp; Accommodation
+                      </div>
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'center', color: '#475569' }}>
+                      1 Month
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '700', color: '#0F172A' }}>
+                      {formatCurrency(receiptTx.amount)}
+                    </td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#F8FAFC' }}>
+                    <td colSpan="2" style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '700', fontSize: '13px', color: '#0F172A' }}>
+                      Total Amount Paid:
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '900', fontSize: '16px', color: '#059669' }}>
+                      {formatCurrency(receiptTx.amount)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
 
-                {/* Subtotal, GST & Grand Total Callout */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-                  <div style={{ width: '260px', fontSize: '12.5px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#475569' }}>
-                      <span>Subtotal:</span>
-                      <strong>{formatCurrency(receiptTx.amount)}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#475569' }}>
-                      <span>GST / Tax (0% Residential):</span>
-                      <strong>₹0.00</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#475569', borderBottom: '1px dashed #CBD5E1', paddingBottom: '6px' }}>
-                      <span>Discount:</span>
-                      <strong>₹0.00</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '10px', marginTop: '6px', color: '#047857' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '800' }}>Grand Total Paid:</span>
-                      <strong style={{ fontSize: '16px', fontWeight: '900' }}>{formatCurrency(receiptTx.amount)}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5. Notes & Terms Callout Box */}
-                <div style={{ background: '#F0F9FF', padding: '10px 14px', borderRadius: '10px', border: '1px solid #BAE6FD', marginBottom: '16px', fontSize: '11.5px', color: '#0369A1' }}>
-                  <div style={{ fontWeight: '700', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>✓ Notes & Acknowledgement</span>
-                  </div>
-                  <div>&bull; Thank you for your payment to Sri Venkateswara Gents PG.</div>
-                  <div>&bull; This is an official computer-generated receipt document. No physical signature is required.</div>
-                </div>
-
-                {/* 6. Footer & Verification QR Code Section */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '2px solid #E2E8F0', flexWrap: 'wrap', gap: '12px' }}>
-                  <div>
-                    <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#0F172A' }}>Sri Venkateswara Gents PG</div>
-                    <div style={{ fontSize: '10.5px', color: '#64748B', marginTop: '2px' }}>
-                      Website: www.svgentspg.com &bull; Support: support@svgentspg.com
-                    </div>
-                    <div style={{ fontSize: '9.5px', color: '#94A3B8', marginTop: '2px' }}>
-                      © 2026 Sri Venkateswara Gents PG. All rights reserved.
-                    </div>
-                  </div>
-
-                  {/* Payment Verification QR Code */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#F8FAFC', padding: '6px 10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                    <svg viewBox="0 0 24 24" width="36" height="36" fill="#0F172A">
-                      <path d="M2 2h8v8H2V2zm2 2v4h4V4H4zm1 1h2v2H5V5zm9-3h8v8h-8V2zm2 2v4h4V4h-4zm1 1h2v2h-2V5zM2 14h8v8H2v-8zm2 2v4h4v-4H4zm1 1h2v2H5v-2zm13-3h4v2h-4v-2zm-4 2h2v2h-2v-2zm2 2h4v4h-4v-4zm-4 2h2v2h-2v-2zm2-6h2v2h-2v-2z" />
-                    </svg>
-                    <div>
-                      <div style={{ fontSize: '9.5px', fontWeight: '800', color: '#0F172A', textTransform: 'uppercase' }}>Scan to Verify</div>
-                      <div style={{ fontSize: '8.5px', color: '#64748B' }}>Digital Audit Stamp</div>
-                    </div>
-                  </div>
-                </div>
-
+              {/* 4. Amount in Words */}
+              <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '8px', padding: '10px 14px', marginBottom: '24px', fontSize: '12px', color: '#166534' }}>
+                <span style={{ fontWeight: '700', color: '#15803D' }}>Amount in Words: </span>
+                <strong style={{ color: '#0F172A' }}>{numberToWordsINR(receiptTx.amount)}</strong>
               </div>
+
+              {/* 5. Footer & Simple Sign-off */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '16px', borderTop: '1px solid #E2E8F0', flexWrap: 'wrap', gap: '14px' }}>
+                <div style={{ fontSize: '11.5px', color: '#64748B' }}>
+                  <div style={{ fontWeight: '600', color: '#0F172A', marginBottom: '2px' }}>Thank you for staying with us!</div>
+                  <div>Sri Venkateswara Gents PG &bull; Phone: +91 91107 52349</div>
+                  <div style={{ fontSize: '10.5px', color: '#94A3B8', marginTop: '2px' }}>Computer-generated official receipt.</div>
+                </div>
+
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: "'Brush Script MT', 'Dancing Script', cursive, sans-serif", fontSize: '22px', color: '#1E3A8A', marginBottom: '2px' }}>
+                    M. Venkatesh
+                  </div>
+                  <div style={{ borderTop: '1px solid #94A3B8', paddingTop: '4px', minWidth: '160px', display: 'inline-block' }}>
+                    <strong style={{ fontSize: '12px', color: '#0F172A', display: 'block' }}>Authorized Signatory</strong>
+                    <span style={{ fontSize: '10.5px', color: '#64748B' }}>Sri Venkateswara Gents PG</span>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
             {/* Bottom Actions Bar (No-Print) */}

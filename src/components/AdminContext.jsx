@@ -93,6 +93,7 @@ const defaultTenants = [
     id: 'tenant-1',
     customerId: 'CUST-1001',
     name: 'Aaditya Sharma',
+    email: 'aaditya.sharma@gmail.com',
     phone: '9876543210',
     aadhaar: '1234-5678-9012',
     roomId: 'room-101',
@@ -110,6 +111,7 @@ const defaultTenants = [
     id: 'tenant-2',
     customerId: 'CUST-1002',
     name: 'Rahul Verma',
+    email: 'rahul.verma@outlook.com',
     phone: '8765432109',
     aadhaar: '2345-6789-0123',
     roomId: 'room-102',
@@ -127,6 +129,7 @@ const defaultTenants = [
     id: 'tenant-3',
     customerId: 'CUST-1003',
     name: 'Amit Patel',
+    email: 'amit.patel@gmail.com',
     phone: '7654321098',
     aadhaar: '3456-7890-1234',
     roomId: 'room-102',
@@ -144,6 +147,7 @@ const defaultTenants = [
     id: 'tenant-4',
     customerId: 'CUST-1004',
     name: 'Sandeep Kumar',
+    email: 'sandeep.k@gmail.com',
     phone: '6543210987',
     aadhaar: '4567-8901-2345',
     roomId: 'room-103',
@@ -161,6 +165,7 @@ const defaultTenants = [
     id: 'tenant-5',
     customerId: 'CUST-1005',
     name: 'Manoj Bajpayee',
+    email: 'manoj.b@gmail.com',
     phone: '9988776655',
     aadhaar: '5678-9012-3456',
     roomId: 'room-104',
@@ -511,6 +516,7 @@ export const AdminProvider = ({ children }) => {
           id: t.id,
           customerId: t.customer_id,
           name: t.name,
+          email: t.email || '',
           phone: t.phone,
           aadhaar: t.aadhaar || '',
           roomId: t.room_id,
@@ -1317,29 +1323,45 @@ export const AdminProvider = ({ children }) => {
           tenantData.bedNumber
         );
 
+        const insertPayload = {
+          customer_id: custId,
+          name: tenantData.name,
+          phone: tenantData.phone,
+          aadhaar: tenantData.aadhaar,
+          room_id: resolvedRoomId,
+          bed_id: resolvedBedId,
+          joining_date: tenantData.joiningDate,
+          advance_paid: parseInt(tenantData.advancePaid || 0),
+          monthly_rent: parseInt(tenantData.monthlyRent || 0),
+          deposit: parseInt(tenantData.deposit || 0),
+          emergency_contact: tenantData.emergencyContact,
+          remarks: tenantData.remarks,
+          status: 'Active'
+        };
+        if (tenantData.email) {
+          insertPayload.email = tenantData.email.trim();
+        }
+
         const { data: createdTenant, error: tErr } = await supabase
           .from('tenants')
-          .insert([{
-            customer_id: custId,
-            name: tenantData.name,
-            phone: tenantData.phone,
-            aadhaar: tenantData.aadhaar,
-            room_id: resolvedRoomId,
-            bed_id: resolvedBedId,
-            joining_date: tenantData.joiningDate,
-            advance_paid: parseInt(tenantData.advancePaid || 0),
-            monthly_rent: parseInt(tenantData.monthlyRent || 0),
-            deposit: parseInt(tenantData.deposit || 0),
-            emergency_contact: tenantData.emergencyContact,
-            remarks: tenantData.remarks,
-            status: 'Active'
-          }])
+          .insert([insertPayload])
           .select()
           .single();
 
         if (tErr) {
           console.error('Supabase addTenant error:', tErr);
-          alert('Could not save to Supabase: ' + tErr.message);
+          // If column email does not exist yet in Supabase, retry without email
+          if (tErr.message && tErr.message.includes('email')) {
+            delete insertPayload.email;
+            const { data: fallbackCreated } = await supabase
+              .from('tenants')
+              .insert([insertPayload])
+              .select()
+              .single();
+            if (fallbackCreated) newTenantId = fallbackCreated.id;
+          } else {
+            alert('Could not save to Supabase: ' + tErr.message);
+          }
         } else if (createdTenant) {
           newTenantId = createdTenant.id;
           if (resolvedBedId) {
@@ -1355,6 +1377,7 @@ export const AdminProvider = ({ children }) => {
       id: newTenantId,
       customerId: custId,
       name: tenantData.name,
+      email: tenantData.email || '',
       phone: tenantData.phone,
       aadhaar: tenantData.aadhaar,
       roomId: tenantData.roomId,
@@ -1381,7 +1404,7 @@ export const AdminProvider = ({ children }) => {
       };
     }));
 
-    setTenants(prev => [...prev, newTenant]);
+    setTenants(prev => [newTenant, ...prev]);
 
     // Create current month transaction
     const currentMonthStr = new Date().toISOString().slice(0, 7);
@@ -1429,19 +1452,29 @@ export const AdminProvider = ({ children }) => {
   const editTenant = async (tenantId, tenantData) => {
     if (supabase && cloudStatus === 'connected') {
       try {
-        await supabase
+        const updatePayload = {
+          name: tenantData.name,
+          phone: tenantData.phone,
+          aadhaar: tenantData.aadhaar,
+          emergency_contact: tenantData.emergencyContact,
+          remarks: tenantData.remarks,
+          monthly_rent: parseInt(tenantData.monthlyRent || 0),
+          deposit: parseInt(tenantData.deposit || 0),
+          advance_paid: parseInt(tenantData.advancePaid || 0)
+        };
+        if (tenantData.email !== undefined) {
+          updatePayload.email = tenantData.email;
+        }
+
+        const { error: updateErr } = await supabase
           .from('tenants')
-          .update({
-            name: tenantData.name,
-            phone: tenantData.phone,
-            aadhaar: tenantData.aadhaar,
-            emergency_contact: tenantData.emergencyContact,
-            remarks: tenantData.remarks,
-            monthly_rent: parseInt(tenantData.monthlyRent || 0),
-            deposit: parseInt(tenantData.deposit || 0),
-            advance_paid: parseInt(tenantData.advancePaid || 0)
-          })
+          .update(updatePayload)
           .eq('id', tenantId);
+
+        if (updateErr && updateErr.message && updateErr.message.includes('email')) {
+          delete updatePayload.email;
+          await supabase.from('tenants').update(updatePayload).eq('id', tenantId);
+        }
       } catch (err) {
         console.error('Supabase editTenant error:', err);
       }
@@ -1452,6 +1485,7 @@ export const AdminProvider = ({ children }) => {
       return {
         ...tenant,
         name: tenantData.name,
+        email: tenantData.email !== undefined ? tenantData.email : (tenant.email || ''),
         phone: tenantData.phone,
         aadhaar: tenantData.aadhaar,
         emergencyContact: tenantData.emergencyContact,
@@ -1633,6 +1667,7 @@ export const AdminProvider = ({ children }) => {
       const newTenant = {
         id: tenantId,
         name: tenantData.name || 'Anonymous',
+        email: tenantData.email || '',
         phone: tenantData.phone || 'N/A',
         aadhaar: tenantData.aadhaar || 'N/A',
         roomId: tenantData.roomId,

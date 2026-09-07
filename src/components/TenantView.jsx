@@ -4,6 +4,7 @@ import { useAdmin } from './AdminContext';
 
 const WEB_FIELDS = [
   { key: 'name', label: 'Tenant Name (Required)', keywords: ['name', 'fullname', 'full name', 'tenant', 'customer', 'guest', 'boarder', 'boarder name', 'resident', 'resident name'] },
+  { key: 'email', label: 'Email Address', keywords: ['email', 'e-mail', 'mail', 'email id', 'email address', 'e mail'] },
   { key: 'phone', label: 'Phone Number', keywords: ['phone', 'mobile', 'contact', 'number', 'cell', 'phone number', 'phone no', 'mobile no', 'mobile number', 'contact number', 'contact no'] },
   { key: 'aadhaar', label: 'Aadhaar Card', keywords: ['aadhar', 'aadhaar', 'id', 'identity', 'card', 'aadhaar card', 'aadhar card', 'national id', 'uid', 'uidai'] },
   { key: 'roomNumber', label: 'Room Number (Required)', keywords: ['room', 'roomno', 'room number', 'room_no', 'room_number', 'room no'] },
@@ -48,6 +49,7 @@ export default function TenantView() {
 
   // Form states
   const [tenantName, setTenantName] = useState('');
+  const [tenantEmail, setTenantEmail] = useState('');
   const [tenantPhone, setTenantPhone] = useState('');
   const [tenantAadhaar, setTenantAadhaar] = useState('');
   const [tenantRoomId, setTenantRoomId] = useState('');
@@ -78,6 +80,7 @@ export default function TenantView() {
 
     addTenant({
       name: tenantName,
+      email: tenantEmail.trim(),
       phone: tenantPhone,
       aadhaar: tenantAadhaar,
       roomId: tenantRoomId,
@@ -93,6 +96,7 @@ export default function TenantView() {
 
     // Reset Form
     setTenantName('');
+    setTenantEmail('');
     setTenantPhone('');
     setTenantAadhaar('');
     setTenantRoomId('');
@@ -111,6 +115,7 @@ export default function TenantView() {
   const openEdit = (tenant) => {
     setActiveTenant(tenant);
     setTenantName(tenant.name);
+    setTenantEmail(tenant.email || '');
     setTenantPhone(tenant.phone);
     setTenantAadhaar(tenant.aadhaar);
     setTenantRent(tenant.monthlyRent.toString());
@@ -128,6 +133,7 @@ export default function TenantView() {
 
     editTenant(activeTenant.id, {
       name: tenantName,
+      email: tenantEmail.trim(),
       phone: tenantPhone,
       aadhaar: tenantAadhaar,
       monthlyRent: tenantRent,
@@ -188,6 +194,7 @@ export default function TenantView() {
   const handleMapSubmit = () => {
     const parsed = [];
     const nameIdx = headers.indexOf(mapping.name);
+    const emailIdx = headers.indexOf(mapping.email);
     const phoneIdx = headers.indexOf(mapping.phone);
     const aadhaarIdx = headers.indexOf(mapping.aadhaar);
     const roomIdx = headers.indexOf(mapping.roomNumber);
@@ -266,6 +273,7 @@ export default function TenantView() {
       parsed.push({
         rowIdx: idx + 2, // 1-indexed spreadsheet row offset (headers are row 1)
         name: tenantName,
+        email: emailIdx !== -1 && row[emailIdx] ? row[emailIdx].toString().trim() : '',
         phone: phoneIdx !== -1 && row[phoneIdx] ? row[phoneIdx].toString().trim() : 'N/A',
         aadhaar: aadhaarIdx !== -1 && row[aadhaarIdx] ? row[aadhaarIdx].toString().trim() : 'N/A',
         roomNumber: rawRoomNum,
@@ -475,7 +483,7 @@ export default function TenantView() {
               <th>Customer ID</th>
               <th>Tenant Name</th>
               <th>Room / Bed</th>
-              <th>Phone Number</th>
+              <th>Contact</th>
               <th>Aadhaar Number</th>
               <th>Joining Date</th>
               <th>Monthly Rent</th>
@@ -510,7 +518,26 @@ export default function TenantView() {
                       Room {tenant.roomNumber} &bull; Bed {tenant.bedNumber}
                     </div>
                   </td>
-                  <td data-label="Phone">{tenant.phone}</td>
+                  <td data-label="Contact">
+                    <div style={{ fontWeight: '600', color: 'var(--text)' }}>{tenant.phone}</div>
+                    {tenant.email ? (
+                      <div style={{ fontSize: '11.5px', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '11px' }}>✉️</span>
+                        <a 
+                          href={`mailto:${tenant.email}`} 
+                          onClick={(e) => e.stopPropagation()} 
+                          style={{ color: '#2563EB', textDecoration: 'none', fontWeight: '500' }}
+                          title={`Email ${tenant.email}`}
+                        >
+                          {tenant.email}
+                        </a>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '10.5px', color: '#94A3B8', fontStyle: 'italic', display: 'block', marginTop: '2px' }}>
+                        No email set
+                      </span>
+                    )}
+                  </td>
                   <td data-label="Aadhaar" className="monospace-text">{tenant.aadhaar}</td>
                   <td data-label="Joined">{tenant.joiningDate}</td>
                   <td data-label="Rent"><strong>{formatCurrency(tenant.monthlyRent)}</strong></td>
@@ -575,6 +602,16 @@ export default function TenantView() {
                   required
                 />
                 <label>Phone Number</label>
+              </div>
+
+              <div className="form-group">
+                <input
+                  type="email"
+                  placeholder=" "
+                  value={tenantEmail}
+                  onChange={(e) => setTenantEmail(e.target.value)}
+                />
+                <label>Email Address (for Receipts)</label>
               </div>
 
               <div className="form-group">
@@ -727,6 +764,16 @@ export default function TenantView() {
                   required
                 />
                 <label>Phone Number</label>
+              </div>
+
+              <div className="form-group">
+                <input
+                  type="email"
+                  placeholder=" "
+                  value={tenantEmail}
+                  onChange={(e) => setTenantEmail(e.target.value)}
+                />
+                <label>Email Address (for Receipts)</label>
               </div>
 
               <div className="form-group">
