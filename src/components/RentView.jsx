@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAdmin } from './AdminContext';
-import logo from '../logo.jpg';
+import { pgLogo } from '../logoData';
 import html2pdf from 'html2pdf.js';
 
 export default function RentView() {
@@ -229,6 +229,7 @@ export default function RentView() {
         className="receipt print-ready-view" 
         style={{ 
           maxWidth: '640px', 
+          width: '100%',
           margin: '0 auto', 
           background: '#ffffff', 
           borderRadius: '10px', 
@@ -237,199 +238,362 @@ export default function RentView() {
           fontFamily: "'Segoe UI', Arial, sans-serif",
           color: '#1c2333',
           position: 'relative',
-          padding: 0
+          padding: 0,
+          boxSizing: 'border-box'
         }}
       >
-        <div className="top-bar" style={{ height: '6px', background: 'linear-gradient(90deg, #2b5fd9, #0f1f3d)' }}></div>
+        <style dangerouslySetInnerHTML={{ __html: `
+          #${elementId} {
+            --navy: #0f1f3d;
+            --blue: #2b5fd9;
+            --light-blue-bg: #eef2fb;
+            --border: #e2e6ee;
+            --text-dark: #1c2333;
+            --text-muted: #6b7280;
+            box-sizing: border-box;
+          }
+          #${elementId} * {
+            box-sizing: border-box;
+          }
+          #${elementId} .top-bar {
+            height: 6px;
+            background: linear-gradient(90deg, #2b5fd9, #0f1f3d);
+          }
+          #${elementId} .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 28px 32px 20px;
+          }
+          #${elementId} .header-left {
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+          }
+          #${elementId} .logo-box {
+            width: 60px;
+            height: 60px;
+            border: 2px solid #2b5fd9;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            overflow: hidden;
+            background: #ffffff;
+          }
+          #${elementId} .pg-name {
+            font-size: 22px;
+            font-weight: 800;
+            color: #0f1f3d;
+            margin: 0 0 4px;
+            letter-spacing: 0.3px;
+            line-height: 1.2;
+          }
+          #${elementId} .pg-sub {
+            font-size: 12.5px;
+            color: #6b7280;
+            margin: 0 0 2px;
+            line-height: 1.4;
+          }
+          #${elementId} .header-right {
+            text-align: right;
+          }
+          #${elementId} .receipt-label {
+            color: #2b5fd9;
+            font-weight: 700;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+          }
+          #${elementId} .receipt-no-label {
+            font-size: 11px;
+            color: #6b7280;
+            margin-top: 10px;
+          }
+          #${elementId} .receipt-no {
+            font-weight: 700;
+            color: #0f1f3d;
+            font-size: 14px;
+          }
+          #${elementId} .meta-strip {
+            display: flex;
+            justify-content: space-between;
+            background: #eef2fb;
+            margin: 0 32px;
+            border-radius: 8px;
+            padding: 14px 20px;
+          }
+          #${elementId} .meta-item {
+            flex: 1;
+          }
+          #${elementId} .meta-label {
+            font-size: 11px;
+            color: #6b7280;
+            margin-bottom: 4px;
+          }
+          #${elementId} .meta-value {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0f1f3d;
+          }
+          #${elementId} .section {
+            padding: 24px 32px 0;
+          }
+          #${elementId} .section-title {
+            font-size: 12.5px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            color: #0f1f3d;
+            margin-bottom: 12px;
+          }
+          #${elementId} .tenant-box {
+            border: 1px solid #e2e6ee;
+            border-radius: 8px;
+            padding: 18px 24px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            row-gap: 16px;
+            column-gap: 24px;
+          }
+          #${elementId} .field-label {
+            font-size: 10.5px;
+            color: #6b7280;
+            margin-bottom: 4px;
+          }
+          #${elementId} .field-value {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #1c2333;
+          }
+          #${elementId} table.payment {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+            font-size: 13px;
+          }
+          #${elementId} table.payment thead tr {
+            background: #0f1f3d;
+            color: #ffffff;
+          }
+          #${elementId} table.payment th {
+            text-align: left;
+            padding: 10px 16px;
+            font-weight: 600;
+            font-size: 12px;
+          }
+          #${elementId} table.payment th.amt, #${elementId} table.payment td.amt {
+            text-align: right;
+          }
+          #${elementId} table.payment th.status, #${elementId} table.payment td.status {
+            text-align: right;
+          }
+          #${elementId} table.payment td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e2e6ee;
+          }
+          #${elementId} .status-paid {
+            color: #2b5fd9;
+            font-weight: 700;
+            font-size: 11.5px;
+            letter-spacing: 0.3px;
+          }
+          #${elementId} .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #eef2fb;
+            margin: 20px 32px 0;
+            padding: 14px 20px;
+            border-radius: 6px;
+            font-weight: 700;
+          }
+          #${elementId} .total-label {
+            font-size: 12.5px;
+            color: #0f1f3d;
+            letter-spacing: 0.3px;
+          }
+          #${elementId} .total-amount {
+            font-size: 18px;
+            color: #0f1f3d;
+            font-weight: 800;
+          }
+          #${elementId} .words-box {
+            background: #eef2fb;
+            border-radius: 6px;
+            padding: 14px 20px;
+            font-size: 13px;
+            color: #1c2333;
+          }
+          #${elementId} .words-box .line {
+            display: inline-block;
+            border-bottom: 1px solid #aab3c5;
+            min-width: 260px;
+            padding: 0 4px;
+            font-weight: 700;
+            color: #0f1f3d;
+          }
+          #${elementId} .notes {
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.5;
+            margin: 0;
+          }
+          #${elementId} .signatures {
+            display: flex;
+            justify-content: space-between;
+            padding: 40px 32px 0;
+          }
+          #${elementId} .sig {
+            width: 42%;
+            text-align: center;
+            border-top: 1px solid #e2e6ee;
+            padding-top: 8px;
+            font-size: 11.5px;
+            color: #6b7280;
+          }
+          #${elementId} .footer {
+            text-align: center;
+            padding: 26px 20px 30px;
+            font-size: 11.5px;
+            color: #6b7280;
+          }
+          #${elementId} .footer .thanks {
+            margin-bottom: 6px;
+            color: #1c2333;
+            font-weight: 600;
+          }
+        ` }} />
+
+        <div className="top-bar"></div>
 
         {/* Header */}
-        <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '28px 32px 20px' }}>
-          <div className="header-left" style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-            <div 
-              className="logo-box" 
-              style={{ 
-                width: '60px', 
-                height: '60px', 
-                border: '2px solid #2b5fd9', 
-                borderRadius: '8px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                flexShrink: 0,
-                overflow: 'hidden',
-                background: '#ffffff'
-              }}
-            >
+        <div className="header">
+          <div className="header-left">
+            <div className="logo-box">
               <img 
-                src={logo} 
-                alt="Sri Venkateswara Gents PG Logo" 
+                src={pgLogo} 
+                alt="PG Logo" 
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
               />
             </div>
             <div>
-              <p className="pg-name" style={{ fontSize: '22px', fontWeight: 800, color: '#0f1f3d', margin: '0 0 4px', letterSpacing: '0.3px', lineHeight: 1.2 }}>
-                Sri Venkateswara Gents PG
-              </p>
-              <p className="pg-sub" style={{ fontSize: '12.5px', color: '#6b7280', margin: '0 0 2px' }}>
-                Paying Guest Accommodation
-              </p>
-              <p className="pg-sub" style={{ fontSize: '12.5px', color: '#6b7280', margin: '0 0 2px' }}>
-                Kodathi Gate, behind Hanuman Archi, Bangalore, Karnataka 560035
-              </p>
+              <p className="pg-name">Sri Venkateswara Gents PG</p>
+              <p className="pg-sub">Paying Guest Accommodation</p>
+              <p className="pg-sub">Kodathi Gate, behind Hanuman Archi, Bangalore, Karnataka 560035</p>
             </div>
           </div>
-          <div className="header-right" style={{ textAlign: 'right' }}>
-            <div className="receipt-label" style={{ color: '#2b5fd9', fontWeight: 700, fontSize: '13px', letterSpacing: '0.5px' }}>
-              RENT RECEIPT
-            </div>
-            <div className="receipt-no-label" style={{ fontSize: '11px', color: '#6b7280', marginTop: '10px' }}>
-              Receipt No.
-            </div>
-            <div className="receipt-no" style={{ fontWeight: 700, color: '#0f1f3d', fontSize: '14px' }}>
-              {receiptNo}
-            </div>
+          <div className="header-right">
+            <div className="receipt-label">RENT RECEIPT</div>
+            <div className="receipt-no-label">Receipt No.</div>
+            <div className="receipt-no">{receiptNo}</div>
           </div>
         </div>
 
         {/* Meta Strip */}
-        <div className="meta-strip" style={{ display: 'flex', justifyContent: 'space-between', background: '#eef2fb', margin: '0 32px', borderRadius: '8px', padding: '14px 20px' }}>
-          <div className="meta-item" style={{ flex: 1 }}>
-            <div className="meta-label" style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>Receipt Date</div>
-            <div className="meta-value" style={{ fontSize: '13px', fontWeight: 700, color: '#0f1f3d' }}>{receiptDate}</div>
+        <div className="meta-strip">
+          <div className="meta-item">
+            <div className="meta-label">Receipt Date</div>
+            <div className="meta-value">{receiptDate}</div>
           </div>
-          <div className="meta-item" style={{ flex: 1 }}>
-            <div className="meta-label" style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>Billing Month</div>
-            <div className="meta-value" style={{ fontSize: '13px', fontWeight: 700, color: '#0f1f3d' }}>{billingMonth}</div>
+          <div className="meta-item">
+            <div className="meta-label">Billing Month</div>
+            <div className="meta-value">{billingMonth}</div>
           </div>
-          <div className="meta-item" style={{ flex: 1 }}>
-            <div className="meta-label" style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>Payment Mode</div>
-            <div className="meta-value" style={{ fontSize: '13px', fontWeight: 700, color: '#0f1f3d' }}>
-              {tx.paymentMode || 'UPI'}{tx.transactionId ? ` (${tx.transactionId})` : ''}
-            </div>
+          <div className="meta-item">
+            <div className="meta-label">Payment Mode</div>
+            <div className="meta-value">{tx.paymentMode || 'UPI'}</div>
           </div>
         </div>
 
         {/* Tenant Details */}
-        <div className="section" style={{ padding: '24px 32px 0' }}>
-          <div className="section-title" style={{ fontSize: '12.5px', fontWeight: 800, letterSpacing: '0.5px', color: '#0f1f3d', marginBottom: '12px' }}>
-            TENANT DETAILS
-          </div>
-          <div className="tenant-box" style={{ border: '1px solid #e2e6ee', borderRadius: '8px', padding: '18px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr', rowGap: '16px', columnGap: '24px' }}>
+        <div className="section">
+          <div className="section-title">TENANT DETAILS</div>
+          <div className="tenant-box">
             <div>
-              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Tenant Name</div>
-              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>{tx.tenantName}</div>
+              <div className="field-label">Tenant Name</div>
+              <div className="field-value">{tx.tenantName}</div>
             </div>
             <div>
-              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Room / Bed No.</div>
-              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>Room {tx.roomNumber} / Bed {tx.bedNumber}</div>
+              <div className="field-label">Room / Bed No.</div>
+              <div className="field-value">Room {tx.roomNumber} / Bed {tx.bedNumber}</div>
             </div>
             <div>
-              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Phone Number</div>
-              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>{currentTenant ? currentTenant.phone : '+91 91107 52349'}</div>
+              <div className="field-label">Phone Number</div>
+              <div className="field-value">{currentTenant?.phone || '+91 91107 52349'}</div>
             </div>
             <div>
-              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Check-in Date</div>
-              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>{checkinDate}</div>
+              <div className="field-label">Check-in Date</div>
+              <div className="field-value">{checkinDate}</div>
             </div>
             <div>
-              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Rent Period</div>
-              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>{formatRentalPeriod(tx.dueDate)}</div>
+              <div className="field-label">Rent Period</div>
+              <div className="field-value">{formatRentalPeriod(tx.dueDate)}</div>
             </div>
             <div>
-              <div className="field-label" style={{ fontSize: '10.5px', color: '#6b7280', marginBottom: '4px' }}>Aadhaar Number</div>
-              <div className="field-value" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1c2333' }}>
-                {currentTenant?.aadhaar || (currentTenant?.customerId ? `ID: ${currentTenant.customerId}` : 'XXXX XXXX 5234')}
-              </div>
+              <div className="field-label">Aadhaar Number</div>
+              <div className="field-value">{currentTenant?.aadhaar || (currentTenant?.customerId ? `ID: ${currentTenant.customerId}` : 'XXXX XXXX 5234')}</div>
             </div>
           </div>
         </div>
 
         {/* Payment Summary */}
-        <div className="section" style={{ padding: '24px 32px 0' }}>
-          <div className="section-title" style={{ fontSize: '12.5px', fontWeight: 800, letterSpacing: '0.5px', color: '#0f1f3d', marginBottom: '12px' }}>
-            PAYMENT SUMMARY
-          </div>
-          <table className="payment" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '4px', fontSize: '13px' }}>
+        <div className="section">
+          <div className="section-title">PAYMENT SUMMARY</div>
+          <table className="payment">
             <thead>
-              <tr style={{ background: '#0f1f3d', color: '#fff' }}>
-                <th style={{ textAlign: 'left', padding: '10px 16px', fontWeight: 600, fontSize: '12px', borderRadius: '4px 0 0 0' }}>Description</th>
-                <th className="amt" style={{ textAlign: 'right', padding: '10px 16px', fontWeight: 600, fontSize: '12px' }}>Amount</th>
-                <th className="status" style={{ textAlign: 'right', padding: '10px 16px', fontWeight: 600, fontSize: '12px', borderRadius: '0 4px 0 0' }}>Status</th>
+              <tr>
+                <th>Description</th>
+                <th className="amt">Amount</th>
+                <th className="status">Status</th>
               </tr>
             </thead>
             <tbody>
-              {tx.advanceAmount ? (
+              {tx.advanceAmount && Number(tx.advanceAmount) > 0 ? (
                 <tr>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid #e2e6ee', color: '#1c2333' }}>Advance Security Deposit</td>
-                  <td className="amt" style={{ textAlign: 'right', padding: '12px 16px', borderBottom: '1px solid #e2e6ee', fontWeight: 600 }}>{formatCurrency(tx.advanceAmount)}</td>
-                  <td className="status" style={{ textAlign: 'right', padding: '12px 16px', borderBottom: '1px solid #e2e6ee' }}>
-                    <span className="status-paid" style={{ color: '#2b5fd9', fontWeight: 700, fontSize: '11.5px', letterSpacing: '0.3px' }}>PAID</span>
-                  </td>
+                  <td>Advance</td>
+                  <td className="amt">{formatCurrency(tx.advanceAmount)}</td>
+                  <td className="status"><span className="status-paid">PAID</span></td>
                 </tr>
               ) : null}
               <tr>
-                <td style={{ padding: '12px 16px', borderBottom: '1px solid #e2e6ee', color: '#1c2333', fontWeight: 500 }}>
-                  Monthly Rent (Includes 3 Times Meals, Wi-Fi &amp; Accommodation)
-                </td>
-                <td className="amt" style={{ textAlign: 'right', padding: '12px 16px', borderBottom: '1px solid #e2e6ee', fontWeight: 600 }}>
-                  {formatCurrency(tx.amount)}
-                </td>
-                <td className="status" style={{ textAlign: 'right', padding: '12px 16px', borderBottom: '1px solid #e2e6ee' }}>
-                  <span className="status-paid" style={{ color: '#2b5fd9', fontWeight: 700, fontSize: '11.5px', letterSpacing: '0.3px' }}>PAID</span>
-                </td>
+                <td>Monthly Rent</td>
+                <td className="amt">{formatCurrency(tx.amount)}</td>
+                <td className="status"><span className="status-paid">PAID</span></td>
               </tr>
             </tbody>
           </table>
         </div>
 
         {/* Total Amount Row */}
-        <div className="total-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eef2fb', margin: '20px 32px 0', padding: '14px 20px', borderRadius: '6px', fontWeight: 700 }}>
-          <div className="total-label" style={{ fontSize: '12.5px', color: '#0f1f3d', letterSpacing: '0.3px' }}>TOTAL AMOUNT RECEIVED</div>
-          <div className="total-amount" style={{ fontSize: '18px', color: '#0f1f3d', fontWeight: 800 }}>{formatCurrency(tx.amount)}</div>
+        <div className="total-row">
+          <div className="total-label">TOTAL AMOUNT RECEIVED</div>
+          <div className="total-amount">{formatCurrency(tx.amount)}</div>
         </div>
 
         {/* Amount in Words */}
-        <div className="section" style={{ padding: '24px 32px 0' }}>
-          <div className="section-title" style={{ fontSize: '12.5px', fontWeight: 800, letterSpacing: '0.5px', color: '#0f1f3d', marginBottom: '12px' }}>
-            AMOUNT IN WORDS
-          </div>
-          <div className="words-box" style={{ background: '#eef2fb', borderRadius: '6px', padding: '14px 20px', fontSize: '13px', color: '#1c2333' }}>
-            Rupees <span className="line" style={{ display: 'inline-block', borderBottom: '1px solid #aab3c5', minWidth: '260px', fontWeight: 700, color: '#0f1f3d', padding: '0 8px' }}>{cleanWords}</span> only
+        <div className="section">
+          <div className="section-title">AMOUNT IN WORDS</div>
+          <div className="words-box">
+            Rupees <span className="line">{cleanWords}</span> only
           </div>
         </div>
 
         {/* Notes */}
-        <div className="section" style={{ padding: '24px 32px 0' }}>
-          <div className="section-title" style={{ fontSize: '12.5px', fontWeight: 800, letterSpacing: '0.5px', color: '#0f1f3d', marginBottom: '12px' }}>
-            NOTES
-          </div>
-          <p className="notes" style={{ fontSize: '12px', color: '#6b7280', lineHeight: 1.5, margin: 0 }}>
-            This receipt acknowledges payment received for the stated rental period. Please retain this receipt for your records.
-          </p>
-          <p className="notes" style={{ fontSize: '12px', color: '#6b7280', lineHeight: 1.5, marginTop: '8px', marginBottom: 0, fontStyle: 'italic' }}>
-            This is a system-generated receipt and does not require a stamp.
-          </p>
+        <div className="section">
+          <div className="section-title">NOTES</div>
+          <p className="notes">This receipt acknowledges payment received for the stated rental period. Please retain this receipt for your records.</p>
+          <p className="notes" style={{ marginTop: '8px', fontStyle: 'italic' }}>This is a system-generated receipt and does not require a stamp.</p>
         </div>
 
         {/* Signatures */}
-        <div className="signatures" style={{ display: 'flex', justifyContent: 'space-between', padding: '36px 32px 0' }}>
-          <div className="sig" style={{ width: '42%', textAlign: 'center', borderTop: '1px solid #e2e6ee', paddingTop: '8px', fontSize: '11.5px', color: '#6b7280' }}>
-            <div style={{ height: '24px' }}></div>
-            Tenant Signature
-          </div>
-          <div className="sig" style={{ width: '42%', textAlign: 'center', borderTop: '1px solid #e2e6ee', paddingTop: '8px', fontSize: '11.5px', color: '#6b7280' }}>
-            <div style={{ fontFamily: "'Brush Script MT', 'Dancing Script', cursive, sans-serif", fontSize: '18px', color: '#0f1f3d', lineHeight: '24px', fontWeight: 600 }}>
-              M. Venkatesh
-            </div>
-            Authorized Signature / Stamp
-          </div>
+        <div className="signatures">
+          <div className="sig">Tenant Signature</div>
+          <div className="sig">Authorized Signature / Stamp</div>
         </div>
 
         {/* Footer */}
-        <div className="footer" style={{ textAlign: 'center', padding: '26px 20px 30px', fontSize: '11.5px', color: '#6b7280' }}>
-          <div className="thanks" style={{ marginBottom: '6px', color: '#1c2333', fontWeight: 600 }}>
-            Thank you for staying with us.
-          </div>
+        <div className="footer">
+          <div className="thanks">Thank you for staying with us.</div>
           <div>Contact: 9441682869 &nbsp;&bull;&nbsp; Email: somulavishnu6@gmail.com</div>
         </div>
       </div>
@@ -1352,7 +1516,9 @@ export default function RentView() {
             </div>
 
             {/* Printable PDF Document Container */}
-            {renderReceiptDocument(receiptTx, tenants.find(t => t.id === receiptTx.tenantId), 'receipt-printable-doc')}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 16px', background: '#f2f4f8' }}>
+              {renderReceiptDocument(receiptTx, tenants.find(t => t.id === receiptTx.tenantId), 'receipt-printable-doc')}
+            </div>
 
             {/* Bottom Actions Bar (No-Print) */}
             <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', background: 'var(--surface)', borderTop: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap', gap: '10px' }}>
