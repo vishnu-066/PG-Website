@@ -773,11 +773,11 @@ export default function RentView() {
       const data = await res.json();
 
       if (data.success) {
-        alert(`✅ Receipt with PDF attachment has been sent to ${mailEmail} via Resend!`);
+        alert(`✅ Receipt with PDF attachment has been sent to ${mailEmail}!`);
       } else {
-        // If Resend API key is not configured or failed, offer helpful guidance and Gmail draft fallback
+        // If email service failed or not configured, offer helpful guidance and Gmail draft fallback
         const useFallback = window.confirm(
-          `Resend Notice: ${data.message}\n\nWould you like to auto-download the PDF and open a draft in Gmail instead?`
+          `Email Notice: ${data.message}\n\nWould you like to auto-download the PDF and open a draft in Gmail instead?`
         );
         if (useFallback) {
           handleDownloadPDF();
@@ -1507,7 +1507,7 @@ export default function RentView() {
                       style={{ fontSize: '13px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(37, 99, 235, 0.08)', color: '#2563EB', border: '1px solid rgba(37, 99, 235, 0.2)', borderRadius: '10px', fontWeight: '600', opacity: sendingEmailId === receiptTx.id ? 0.7 : 1, cursor: sendingEmailId === receiptTx.id ? 'wait' : 'pointer' }} 
                       title={tenant?.email ? `Email receipt directly to ${tenant.email}` : 'Enter email to send receipt'}
                     >
-                      {sendingEmailId === receiptTx.id ? '⏳ Sending PDF via Resend...' : `✉️ Email Receipt ${tenant?.email ? `(${tenant.email})` : ''}`}
+                      {sendingEmailId === receiptTx.id ? '⏳ Sending PDF Receipt...' : `✉️ Email Receipt ${tenant?.email ? `(${tenant.email})` : ''}`}
                     </button>
                   );
                 })()}
